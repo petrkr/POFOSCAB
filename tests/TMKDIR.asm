@@ -45,8 +45,8 @@ start:
 .vector_ok:
         ; Step 1: simulate the ROM's receive-block call (AH=0x30 AL=1)
         ; with payload_buf holding payload[0]=0x88 followed by the ASCIIZ
-        ; path at offset 3 (same request layout PortfolioLink::runMkdir
-        ; uses: [cmd][0][0x70] + ASCIIZ path). This makes PFTD remember
+        ; path at offset 3 (same request layout MKDIR uses:
+        ; [cmd][0][0x70] + ASCIIZ path). This makes PFTD remember
         ; DS:DX and set pending=1, then fall through to .chain (STUB61's
         ; IRET) - safe because STUB61 is loaded.
         mov     dx, payload_buf

@@ -1,6 +1,6 @@
 ; THELLO.asm - DOSBox-only test helper, NEVER for real Portfolio
 ; hardware. Exercises PFTD's detection/dispatch path for HELLO without a
-; real cable/ESP32 on the other end.
+; real cable client on the other end.
 ;
 ; What this can and can't verify:
 ;   - CAN verify: PFTD's "watch the next int 0x61 call" detection trick
@@ -18,7 +18,7 @@
 ; This only proves PFTD doesn't hang/crash when it receives HELLO and
 ; that it reaches the point of issuing the transmit call - not that the
 ; transmit itself is byte-correct end to end. That end-to-end check still
-; needs real Portfolio + ESP32 hardware.
+; needs a real Portfolio and real cable client hardware.
 ;
 ; Usage in DOSBox:
 ;   STUB61                          <- installs no-op int 0x61 stub

@@ -3,16 +3,16 @@
 Zdrojový kód, na který se tento dokument odkazuje (`*.inc`/`.asm`
 soubory zmíněné níže, např. `pofo-driver/hello.inc`), žije přímo v
 tomto repu (POFOSCAB), v jeho rootu - historické zmínky `pofo-driver/`
-prefixu odkazují na to, jak byly tyto soubory organizované v
-PortfolioESPlink repu před přesunem, ne na podadresář tady.
+prefixu odkazují na to, jak byly tyto soubory organizované před
+přesunem do tohoto samostatného repa, ne na podadresář tady.
 
 ## Cíl
 Najít, kde Server mód (System Setup -> File transfer -> Server) rozhoduje
 o funkčním kódu přijatého bloku (payload[0]: 2=receive file, 3=transmit
-init, 5=transmit overwrite, 6=list - viz `PortfolioLink.h`), zjistit jestli
-tam je skrytý další kód, a pokud ne, navrhnout bezpečný způsob, jak přidat
-nové příkazy (mkdir, delete, free space, list-v2 se složkami/velikostmi)
-BEZ zásahu do ROM (read-only) a BEZ duplikace stávající receive/send logiky.
+init, 5=transmit overwrite, 6=list), zjistit jestli tam je skrytý další
+kód, a pokud ne, navrhnout bezpečný způsob, jak přidat nové příkazy
+(mkdir, delete, free space, list-v2 se složkami/velikostmi) BEZ zásahu
+do ROM (read-only) a BEZ duplikace stávající receive/send logiky.
 
 ## Výsledek 1: dispatch v ROM nemá skrytý příkaz
 
@@ -80,9 +80,9 @@ viz sekce "PFTD command space (0x80+)" níže:
    - Žádná duplikace list/send/receive logiky - jen použití stejného
      zdokumentovaného `AH=0x30` transportního primitivu.
 4. Ověřeno: `data=F0` → Atari odpoví libovolným obsahem (testováno `0xAA`
-   i text `"ahoj"`, obojí dorazilo zpět na ESP32 přes `/sendRaw`
-   nezměněné). Legacy `list` (payload[0]=6) funguje beze změny se stejným
-   TSR nainstalovaným - žádná regrese.
+   i text `"ahoj"`, obojí dorazilo zpět na klienta nezměněné přes debug
+   endpoint na jeho straně). Legacy `list` (payload[0]=6) funguje beze
+   změny se stejným TSR nainstalovaným - žádná regrese.
 
 ### Dvě chyby, na které je třeba pamatovat při psaní podobného hooku
 
@@ -230,8 +230,8 @@ proto to explorace/testování v DOSBoxu nikdy neodhalilo):
 
 ### MKDIR/DELETE (0x88/0x89) - real-HW test výsledky a CF-ordering bug
 
-Při prvním real-HW testu (ESP32 10.200.0.121, PFTD build 0xFFFF0011) přes
-`/mkdirAtari`/`/deleteAtari`:
+Při prvním real-HW testu (PFTD build 0xFFFF0011) přes klientovy
+mkdir/delete operace:
 
 - MKDIR `C:\TESTDIR` (nový adresář) - `200 OK`, happy path funguje.
 - MKDIR `C:\TESTDIR` podruhé (adresář už existuje) - očekáváno `409`
@@ -239,7 +239,7 @@ Při prvním real-HW testu (ESP32 10.200.0.121, PFTD build 0xFFFF0011) přes
 - DELETE `C:\NOTEXIST.TXT` (neexistující soubor) - očekáváno `409`,
   reálně vráceno `200 OK "Deleted"`.
 
-Ověřeno přes `/sendRaw` (syrové bajty, bez ESP-side interpretace):
+Ověřeno přes syrové bajty na drátě (bez klient-side interpretace):
 DELETE na `C:\NOTEXIST.TXT` vrátil `20 00` (status=0x20 ok, errcode=0) i
 když soubor evidentně neexistuje.
 
@@ -342,7 +342,7 @@ médiu.
 Přidáno jako doplněk k MKDIR/DELETE (`int 0x21 AH=0x3A`, sdílí
 `critical_error.inc` a stejný CF-first fix jako mkdir.inc/delete.inc,
 tentokrát napsáno rovnou správně od začátku). PFTD build `0xFFFF0013`,
-retest přes `/rmdirAtari`:
+retest přes klientovo RMDIR volání:
 
 | Scénář | Výsledek |
 |---|---|
@@ -357,7 +357,7 @@ po analogii, ne odděleně ověřeno.
 ### Write-protected médium (D:) - real-HW test výsledky
 
 `D:` na testovaném HW je read-only/write-protected jednotka (obsahuje
-`TEST.TXT`, 40 bajtů). Test přes `/mkdirAtari`/`/deleteAtari`:
+`TEST.TXT`, 40 bajtů). Test přes klientovo MKDIR/DELETE volání:
 
 | Scénář | Výsledek |
 |---|---|
@@ -378,15 +378,15 @@ Abort/Retry/Ignore.
 
 Doplňuje dřívější izolovaný `TMKDIRA.COM` test (MKDIR bez média,
 potvrdil critical error). Test DELETE/RMDIR na `A:` (žádná karta
-vložena) přes `/deleteAtari`/`/rmdirAtari`, PFTD build `0xFFFF0013`:
+vložena) přes klientovo DELETE/RMDIR volání, PFTD build `0xFFFF0013`:
 
 | Scénář | Výsledek |
 |---|---|
 | DELETE `A:\NOTEXIST.TXT` | `409`, `errcode=0xFF` (critical error fired) - konzistentní s `AH=0x41` na write-protected `D:` (viz výše), `AH=0x41` vyvolává critical error i na jednotce zcela bez média. |
 | RMDIR `A:\NOTEXIST` | `409`, `errcode=1` (not found) - **žádný** critical error. `AH=0x3A` na jednotce bez média se na tomto HW chová jako běžná DOS chyba, ne critical error - na rozdíl od `AH=0x39` (MKDIR, potvrzeno critical error přes `TMKDIRA.COM`) a `AH=0x41` (DELETE, critical error i tady i na `D:`). |
 
-Systém zůstal plně responzivní po obou voláních (`/status` potvrzeno,
-žádné zaseknutí) - `critical_error.inc` handler funguje spolehlivě i
+Systém zůstal plně responzivní po obou voláních (potvrzeno klientovým
+status dotazem, žádné zaseknutí) - `critical_error.inc` handler funguje spolehlivě i
 když se critical error skutečně spustí, a nezpůsobuje problém ani u
 volání, co critical error nevyvolají (RMDIR zde).
 
@@ -410,38 +410,35 @@ zaručit, že konkrétní volání critical error nevyvolá.
 ### RENAME (0x8B) - transportní bug (90B ROM buffer overflow) a real-HW test výsledky
 
 **Bug nalezený při prvním real-HW testu, ne DOS/critical-error problém
-tentokrát - čistě transportní.** `runRename` (ESP32 strana) stavěl
-request do lokálního bufferu `kRenameBufSize = 3 + 2*(MAX_FILENAME_LEN+1)
-= 163` bajtů (dost velký na dvě plné cesty), ale posílal
-`sendBlock(request, sizeof(request), ...)` - tedy VŽDY celých 163 bajtů
-přes drát, i když skutečný obsah (krátká cesta) byl jen ~34 bajtů.
+tentokrát - čistě transportní, a výhradně na klientské straně.** Klient
+stavěl RENAME request do lokálního bufferu dost velkého na dvě plné
+8.3 cesty (163 bajtů), ale posílal vždy celý tenhle buffer přes drát,
+i když skutečný obsah (krátká cesta) byl jen ~34 bajtů.
 
 ROM's File Transfer Server hlavní smyčka volá `int 0x21 AH=0x30 AL=1`
 (receive block) do fixního stack-frame bufferu `[bp-0x94]`, velikost
 90 bajtů (`push 0x5A` v disassembly, viz sekce výše "Výsledek 1"). Tenhle
-ROM buffer nemá žádnou bounds-check ochranu na přijímací straně (na
-rozdíl od ESP32's `receiveBlock`, co svůj `maxLen` kontroluje). Poslání
+ROM buffer nemá žádnou bounds-check ochranu na přijímací straně. Poslání
 163 bajtů do 90bajtového bufferu přepsalo přilehlou stack frame ROM
 smyčky - **potvrzeno na reálném HW jako "communication error" a pád
 spojení s Portfoliem** (uživatelské hlášení, ne jen teoretické riziko).
 
-Wire protokol (`sendBlock`/`receiveBlock`, `src/PortfolioLink.cpp`) je
-sender-declares-length (2B LE prefix + přesně `len` bajtů dat) - poslání
-MÉNĚ bajtů, než je velikost lokálního bufferu, je protokolem naprosto
-v pořádku a ostatní příkazy (HELLO/LIST/DRIVES) to tak dělaj oboustranně
-(odpovědi jsou 1-12 bajtů, ne padded na 90). Chyba byla výhradně v tom,
-že RENAME posílal `sizeof(request)` místo skutečné potřebné délky.
+Wire protokol (`sendBlock`/`receiveBlock`) je sender-declares-length
+(2B LE prefix + přesně `len` bajtů dat) - poslání MÉNĚ bajtů, než je
+velikost lokálního bufferu, je protokolem naprosto v pořádku a ostatní
+příkazy (HELLO/LIST/DRIVES) to tak dělaj oboustranně (odpovědi jsou
+1-12 bajtů, ne padded na 90). Chyba byla výhradně v tom, že RENAME na
+klientské straně posílalo velikost celého lokálního bufferu místo
+skutečné potřebné délky.
 
-**Fix:** `runRename` teď počítá `wireLen = 3 + oldLen + 1 + newLen + 1`,
-kontroluje `wireLen <= RAW_BUFSIZE` (90) a posílá jen `wireLen` bajtů.
-Pro dvě 8.3 cesty by k přetečení 90B limitu došlo až při ~4 a více
-úrovních vnořených adresářů na obou stranách současně (spočítáno, ne
-testováno) - `runRename` teď explicitně tenhle limit hlídá a vrátí
-`PortfolioResult::Unknown` s logovanou chybou, místo aby to zkusilo a
-spadlo, pokud by cesty byly příliš dlouhé.
+**Fix (na klientské straně):** RENAME teď počítá skutečnou potřebnou
+délku (`3 + oldLen + 1 + newLen + 1`), kontroluje, že se vejde do 90B
+ROM limitu, a posílá jen tolik bajtů, kolik je skutečně potřeba. Pro
+dvě 8.3 cesty by k přetečení 90B limitu došlo až při ~4 a více úrovních
+vnořených adresářů na obou stranách současně (spočítáno, ne testováno).
 
-**Retest po opravě (fwBuildId 0x00000005, PFTD build 0xFFFF0014
-nezměněn - bug byl jen ESP32 stranou), real HW, drive C:**
+**Retest po opravě (PFTD build 0xFFFF0014 nezměněn - bug byl jen na
+klientské straně), real HW, drive C:**
 
 | Scénář | Výsledek |
 |---|---|
@@ -485,15 +482,6 @@ ně) bude `AH=0x0E`'s count VŽDY minimálně 3 a VŽDY znamená přesně
 nepotřebuje žádný záchranný/ověřovací mechanismus navíc - jednoduchý
 count je definitivně dostačující a spolehlivý.
 
-## ESP32 strana (pro testování)
-
-- `PortfolioLink::sendRaw(data, len, response)` / `runRaw()` v
-  `src/PortfolioLink.cpp` - pošle libovolný syrový blok přes stávající
-  `sendBlock`/`receiveBlock`, vrátí hex-encoded odpověď.
-- `POST /sendRaw` s form parametrem `data` (hex string) v
-  `src/PortfolioESPlink.cpp` - debug endpoint, žádná interpretace.
-- Webový formulář "Raw debug" v `data/web/index.htm`.
-
 ## DOSBox testovací nástroje (pofo-driver/tests/)
 
 DOSBox nemá nativní `int 0x61` handler (NULL vektor by default), takže
@@ -506,12 +494,12 @@ PFTD tam samo o sobě nejde vyzkoušet end-to-end bez pomocných nástrojů:
 - `THELLO.COM` / `TLISTEXT.COM` - simulují ROM's receive-block handshake
   (`int 0x61 AX=0x3001` s payload[0]=0x80/0x86 v bufferu, pak libovolné
   další `int 0x61`), aby vyvolaly PFTD detekci a `dispatch_hello`/
-  `dispatch_list` bez reálného Portfolia nebo ESP32 na drátě.
+  `dispatch_list` bez reálného Portfolia nebo klienta na drátě.
 - Co tohle OVĚŘÍ: že PFTD správně detekuje payload[0] a zavolá správný
   dispatcher bez zaseknutí/pádu, a (díky STUB61 logu) i přesné bajty
   odpovědi. Co NEOVĚŘÍ: chování na reálném Portfolio hardwaru (HW
   detekce je v DOSBoxu vypnutá přes `CHECK_POFO=0` build) - to
-  potřebuje skutečný Portfolio + ESP32.
+  potřebuje skutečný Portfolio a reálného klienta na kabelu.
 - Použití v DOSBoxu: `pofo-driver/loadtest.bat` nahodí `STUB61` a
   `PFTDN` (CHECK_POFO=0 build) jedním příkazem; samotný test nástroj
   (`TESTS\THELLO.COM` / `TESTS\TLISTEXT.COM`) se pak spouští ručně podle
@@ -541,57 +529,3 @@ a seznam plánovaných nápadů (mkdir, delete, SETTIME) jsou teď v
 `PROTOCOL.md` - důvody/zdůvodnění jednotlivých DOS volání (`AH=0x39`,
 `AH=0x41`/`0x3A`, `AH=0x2D`/`0x2B`) a jejich rizika na DIP DOS zůstávají
 zdokumentované jen tady, viz "DIP DOS critical error" sekce výše.
-
-### ESP32-side watchdog crash - waitClockHigh/waitClockLow bez yield (mimo Atari/DOS scope, ale zaznamenáno pro souvislost)
-
-Task watchdog trigger na `async_tcp` tasku pozorováno opakovaně (déle,
-poprvé s backtrace při ladění RENAME) - konkrétní výskyt: po ESP32
-resetu/novém FW, `pofo` task (`taskLoop()`) dělá auto-probe `runHello()`
-na nově detekované spojení, Portfolio ještě není/nebylo připraveno
-odpovědět na handshake, `sendByte()` -> `waitClockLow()` čeká celý
-`CLOCK_TIMEOUT_US` (2s) v tight busy-wait smyčce (`while
-(digitalRead(...)) { if (timeout) return false; }`) BEZ jakéhokoliv
-yieldu. `xTaskCreate` (ne pinned) umístil `pofo` na stejné jádro jako
-`async_tcp`, které tak 2s nedostalo šanci resetovat watchdog ->
-`Aborting`, ESP32 reboot.
-
-Dekódováno přes `riscv32-esp-elf-addr2line` (ESP32-C3, RISC-V) z reálného
-crash dumpu: `MEPC` padlo uvnitř `esp_timer_impl_get_time()`
-(`micros()`), volací řetězec `taskLoop() -> runHello() -> sendBlock() ->
-sendByte() -> waitClockLow()` (přesná čísla řádků v `src/PortfolioLink.
-cpp` v době crashe: 518/904/684/615/566).
-
-**Toto NENÍ Atari/DOS/DIP DOS problém** - je to čistě FreeRTOS
-cooperative-scheduling otázka na ESP32 straně, ale je zaznamenáno tady
-protože souvisí s "co se stane, když Portfolio neodpovídá na handshake"
-- podobná třída otázek jako critical-error handling na Atari straně,
-jen na opačném konci kabelu.
-
-**První pokus o fix (build 0x00000006) - `taskYIELD()` na každé iteraci -
-NEFUNGOVAL.** Reprodukováno znovu na reálném HW, dekódovaný backtrace
-ukázal `vPortYield` (tedy `taskYIELD()` samotné) na vrcholu stacku přesně
-ve chvíli watchdog abortu. Vysvětlení (ověřeno research/FreeRTOS
-dokumentací): `taskYIELD()` jen NABÍZÍ CPU jinému already-READY tasku v
-tom okamžiku - pokud `async_tcp` v tu chvíli čeká na vlastní
-socket/queue (normální idle stav), `taskYIELD()` se vrátí prakticky
-okamžitě a smyčka pokračuje dál bez skutečného uvolnění CPU. ESP32-C3 je
-navíc single-core RISC-V - pinning na jiné jádro (druhá zvažovaná
-varianta) není možný, obě tasky (`pofo`, `async_tcp`) jsou vždy na
-stejném (jediném) jádru.
-
-**Skutečný fix (build 0x00000007):** hybridní přístup v
-`waitClockHigh`/`waitClockLow` (`src/PortfolioLink.cpp`) - prvních ~1ms
-čekání (`kBusyPollBudgetUs`) busy-poll s `taskYIELD()` (zachovává
-rychlou odezvu na hranu během aktivního přenosu, kde Portfolio odpovídá
-v mikrosekundách), po překročení budgetu přechod na `vTaskDelay(1)` -
-to na rozdíl od `taskYIELD()` NEPODMÍNĚNĚ zablokuje `pofo` task na
-alespoň 1 FreeRTOS tick (~1ms), garantovaně uvolní CPU pro `async_tcp`
-i idle task bez ohledu na to, jestli byl v tu chvíli READY. Cena: až
-1 tick (~1ms) navíc latence, ale jen ve vzácném případě, kdy se čeká
-většinu z několikasekundového timeoutu na neodpovídající Portfolio -
-běžný bitbanging (mikrosekundy) se nezmění.
-
-Neotestováno na reálném HW zda tento druhý fix skutečně zabraňuje
-watchdog crashi (problém je nedeterministický - závisí na timingu
-resetu vs. stavu Portfolia) - retest doporučen opakovaným ESP32 reset
-testem.

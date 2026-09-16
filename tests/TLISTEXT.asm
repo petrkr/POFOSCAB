@@ -18,7 +18,7 @@
 ;   - CANNOT verify: behaviour against real Portfolio DIP DOS filesystem
 ;     geometry/attributes - only that the DOS Find First/Next call
 ;     sequence and PFTD's own buffer handling don't hang or corrupt
-;     state. End-to-end still needs real Portfolio + ESP32 hardware.
+;     state. End-to-end still needs a real Portfolio and real cable client hardware.
 ;
 ; Usage in DOSBox:
 ;   STUB61                          <- installs transmit-logging int 0x61 stub
@@ -48,8 +48,8 @@ start:
 .vector_ok:
         ; Step 1: simulate the ROM's receive-block call (AH=0x30 AL=1)
         ; with payload_buf holding payload[0]=0x86 followed by the
-        ; ASCIIZ pattern at offset 3 (same request layout PortfolioLink
-        ; ::runListExt uses: [cmd][0][0x70] + ASCIIZ pattern). This makes
+        ; ASCIIZ pattern at offset 3 (same request layout LIST extended
+        ; uses: [cmd][0][0x70] + ASCIIZ pattern). This makes
         ; PFTD remember DS:DX and set pending=1, then fall through to
         ; .chain (STUB61's IRET) - safe because STUB61 is loaded.
         mov     dx, payload_buf

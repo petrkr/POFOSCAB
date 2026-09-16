@@ -3,7 +3,7 @@
 ; directory-entry rewrite, not a data copy - it also works as a "move"
 ; within the same drive (changing the path component without changing the
 ; name), but NOT across drives (C: -> D:) - that would need a separate
-; copy+delete sequence at the PFTD/ESP32 level, out of scope here.
+; copy+delete sequence at the client level, out of scope here.
 ;
 ; Command byte 0x8B continues the 0x80+ PFTD command space - see hello.inc's
 ; header comment for why that space is safe.

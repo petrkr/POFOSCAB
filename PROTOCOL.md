@@ -1,39 +1,36 @@
 # PFTD protocol reference
 
-Command byte layout is source-of-truth in code (`*.inc` in this repo on
-the Atari side, `src/PortfolioLink.cpp` in
-[PortfolioESPlink](https://github.com/petrkr/PortfolioESPlink) on the
-ESP side) - this is a summary to keep in sync with it, not a
-replacement for reading the code.
+Command byte layout is source-of-truth in code (`*.inc` in this repo)
+- this is a summary to keep in sync with it, not a replacement for
+reading the code.
 
 This repo implements the Atari-side (server) half of the protocol
-described here - `PFTD.asm` + its `.inc` modules. The ESP32-side
-(client) implementation lives in the separate PortfolioESPlink repo;
-`PortfolioLink.cpp`/`.h` there consume this exact protocol.
+described here - `PFTD.asm` + its `.inc` modules. The client side
+consuming this protocol lives elsewhere and is out of scope for this
+repo.
 
 ## Overview
 
 `payload[0]` selects the command:
 
 - `[2, 6]` - built into the Portfolio ROM's "File transfer Server" mode,
-  fixed dispatch, cannot be extended (see `ROM_RESEARCH_NOTES.md` in
-  PortfolioESPlink for the reverse-engineering that established this).
+  fixed dispatch, cannot be extended (see `rom/ROM_RESEARCH_NOTES.md`
+  for the reverse-engineering that established this).
 - `0x80+` - PFTD-only command space, handled entirely by the PFTD TSR
   (this repo), no ROM involvement.
 
 Transport for both ranges is the same `sendBlock`/`receiveBlock`
-handshake (PortfolioESPlink's `src/PortfolioLink.cpp`) over
-`int 0x61 AH=0x30`.
+handshake over `int 0x61 AH=0x30`.
 
 ## ROM commands (2-6)
 
-| Code | Purpose | ESP side |
-|---|---|---|
-| `0x02` | Receive file (Portfolio -> ESP) | `PortfolioLink::runDownload`, `receiveFileInit_` (`PortfolioLink.h`) |
-| `0x03` | Transmit init (ESP -> Portfolio) | `PortfolioLink::runUpload`, `transmitInit_` (`PortfolioLink.h`) |
-| `0x05` | Transmit overwrite confirm | `runUpload`, `TRANSMIT_OVERWRITE` (`PortfolioLink.cpp`) |
-| `0x06` | List (legacy, names only) | `PortfolioLink::runList`, `receiveInit_` (`PortfolioLink.h`) |
-| `0x00` | Cancel transfer | `TRANSMIT_CANCEL` (`PortfolioLink.cpp`), sent when overwrite is declined |
+| Code | Purpose |
+|---|---|
+| `0x02` | Receive file (Portfolio -> client) |
+| `0x03` | Transmit init (client -> Portfolio) |
+| `0x05` | Transmit overwrite confirm |
+| `0x06` | List (legacy, names only) |
+| `0x00` | Cancel transfer, sent when overwrite is declined |
 
 Response control byte conventions: `0x10` = error (bad path/disk
 full/not found), `0x20` = ok / file exists (upload) / transfer done.
@@ -53,8 +50,6 @@ Presence/capability discovery. Request: single byte `0x80`. Response
 | 9 | 1B | capabilities bitmask |
 | 10-11 | 2B | reserved (`0x00, 0x00`) |
 
-- ESP: `PortfolioLink::runHello` (`PortfolioLink.cpp`), public API
-  `helloDaemon()`; auto-probed on connect in `taskLoop`.
 - Atari: `hello.inc` (`HELLO_CMD`, `hello_response`, `dispatch_hello`).
 
 ### LIST extended (`0x86`)
@@ -69,8 +64,6 @@ total(4B LE)`. Free/total is per-drive (from the pattern's drive
 letter, or the current default drive), always present regardless of
 capability bit.
 
-- ESP: `PortfolioLink::runListExt` (`PortfolioLink.cpp`), public API
-  `listFilesExtended()`.
 - Atari: `list.inc` (`LIST_CMD`, `dispatch_list`).
 
 ### DRIVES (`0x87`)
@@ -78,8 +71,6 @@ capability bit.
 How many logical DOS drives exist (`A=1, B=2, ...`). Request: single
 byte `0x87`. Response: single byte, drive count.
 
-- ESP: `PortfolioLink::runDrives` (`PortfolioLink.cpp`), public API
-  `listDrives()`.
 - Atari: `drives.inc` (`DRIVES_CMD`, `dispatch_drives`).
 
 ### MKDIR (`0x88`)
@@ -88,8 +79,6 @@ Create a directory on the Portfolio (`int 0x21 AH=0x39`). Request:
 `0x88, 0x00, 0x70` + ASCIIZ target path. Response (fixed 2 bytes): see
 "Response status/errcode convention" below.
 
-- ESP: `PortfolioLink::runMkdir` (`PortfolioLink.cpp`), public API
-  `mkdirAtari()`.
 - Atari: `mkdir.inc` (`MKDIR_CMD`, `dispatch_mkdir`).
 
 ### DELETE (`0x89`)
@@ -99,8 +88,6 @@ directory removal is RMDIR, `0x8A`, below). Request: `0x89, 0x00, 0x70` +
 ASCIIZ target path.
 Response (fixed 2 bytes): see "Response status/errcode convention" below.
 
-- ESP: `PortfolioLink::runDelete` (`PortfolioLink.cpp`), public API
-  `deleteAtari()`.
 - Atari: `delete.inc` (`DELETE_CMD`, `dispatch_delete`).
 
 ### RMDIR (`0x8A`)
@@ -112,8 +99,6 @@ distinguished from "access denied" (errcode `4`) - DOS 2.x has no separate
 code for this, same coarse-granularity situation as MKDIR's "already
 exists" (confirmed on real hardware, see `ROM_RESEARCH_NOTES.md`).
 
-- ESP: `PortfolioLink::runRmdir` (`PortfolioLink.cpp`), public API
-  `rmdirAtari()`.
 - Atari: `rmdir.inc` (`RMDIR_CMD`, `dispatch_rmdir`).
 
 ### RENAME (`0x8B`)
@@ -121,15 +106,13 @@ exists" (confirmed on real hardware, see `ROM_RESEARCH_NOTES.md`).
 Rename or move a file/directory on the Portfolio (`int 0x21 AH=0x56`).
 Works as a move within the same drive (DOS rename is a directory-entry
 rewrite, not a data copy) but NOT across drives - PFTD does not implement
-cross-drive move (that would need a copy+delete sequence at the ESP32
+cross-drive move (that would need a copy+delete sequence at the client
 level, not a single DOS call).
 
 Request: `0x8B, 0x00, 0x70` + TWO consecutive ASCIIZ strings (old path,
 then new path, new path immediately following old path's NUL). Response
 (fixed 2 bytes): see "Response status/errcode convention" below.
 
-- ESP: `PortfolioLink::runRename` (`PortfolioLink.cpp`), public API
-  `renameAtari()`.
 - Atari: `rename.inc` (`RENAME_CMD`, `dispatch_rename`).
 
 ### Response status/errcode convention (MKDIR/DELETE/RMDIR/RENAME)
@@ -182,9 +165,7 @@ for cross-drive rename attempts) is unverified.
 | 5 (`0x20`) | `CAP_RENAME` | RENAME (`0x8B`) supported |
 
 Defined in `hello.inc`; currently all six bits are always set
-(`CAP_LIST_EXT | CAP_DRIVES | CAP_MKDIR | CAP_DELETE | CAP_RMDIR | CAP_RENAME`). ESP side reads the raw byte into
-`pftdCapabilities()` (`PortfolioLink.h`/`.cpp`) without named-bit
-helpers - callers mask it themselves.
+(`CAP_LIST_EXT | CAP_DRIVES | CAP_MKDIR | CAP_DELETE | CAP_RMDIR | CAP_RENAME`).
 
 ## Version / BUILD_ID
 
@@ -208,10 +189,7 @@ placeholder, not a real release marker.
    same pattern as `CAP_LIST_EXT`/`CAP_DRIVES`.
 3. Implement `dispatch_<name>` in a new or existing `*.inc` file here,
    wire it into `PFTD.asm`'s command detection.
-4. Add a `run<Name>`/public method pair on the ESP side (in the
-   PortfolioESPlink repo) in `PortfolioLink.cpp`/`.h`, following
-   `runHello`/`runListExt`/`runDrives`.
-5. Add a standalone DOSBox test tool in `tests/` (see
+4. Add a standalone DOSBox test tool in `tests/` (see
    `TLISTEXT.COM`/`TDRIVES.COM`) and verify on real hardware before
    trusting any RBIL-documented DOS function contract - DIP DOS
    diverges from PC MS-DOS behavior in ways DOSBox won't reveal (see

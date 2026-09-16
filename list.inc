@@ -10,10 +10,9 @@
 ; client picks 0x86 over 6 based on the HELLO capabilities bit
 ; (CAP_LIST_EXT below).
 ;
-; Request layout (identical prefix to the ROM's own list request, see
-; PortfolioLink::runList's receiveInit_): payload[0]=0x86, payload[1..2]
-; unused (0x00, 0x70 - mirrors the ROM's own convention), payload[3..]
-; ASCIIZ search pattern (e.g. "*.*").
+; Request layout (identical prefix to the ROM's own list request):
+; payload[0]=0x86, payload[1..2] unused (0x00, 0x70 - mirrors the ROM's
+; own convention), payload[3..] ASCIIZ search pattern (e.g. "*.*").
 ;
 ; Response layout (count(2B LE) + N * entry - same count+N-entries shape
 ; as the ROM's own list, just with attr+size/date/time prepended to each

@@ -4,7 +4,7 @@
 ; This is deliberately NOT built on the same payload[0]/pending mechanism
 ; as HELLO (hello.inc) - that path only fires after a real ROM receive-
 ; block handshake (AH=0x30 AL=1) and answers over the smart cable, which
-; needs the ESP32 side alive on the other end. The installer needs to ask
+; needs a client alive on the other end. The installer needs to ask
 ; "is a PFTD hook already live?" synchronously, with nothing attached to
 ; the cable, so this uses a private AX subfunction that legitimate ROM
 ; code and the HELLO/transmit path never produce: AX=0x6101. If that

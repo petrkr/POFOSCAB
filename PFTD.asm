@@ -1,10 +1,11 @@
-; PFTD.COM - PortfolioESPlink Portfolio Transfer Daemon, v1 (HELLO only).
+; PFTD.COM - Portfolio Transfer Daemon, v1 (HELLO only).
 ;
-; Installs a TSR hook on int 0x61 (the Portfolio's smart-cable API) so the
-; ESP32 side can detect that this driver is present and query its protocol
-; version/capabilities, in addition to the stock ROM File transfer Server
-; commands (payload[0] in [2,6] - see ROM_RESEARCH_NOTES.md). See
-; hello.inc for the command layout and response format.
+; Installs a TSR hook on int 0x61 (the Portfolio's smart-cable API) so a
+; client on the other end of the cable can detect that this driver is
+; present and query its protocol version/capabilities, in addition to
+; the stock ROM File transfer Server commands (payload[0] in [2,6] -
+; see ROM_RESEARCH_NOTES.md). See hello.inc for the command layout and
+; response format.
 ;
 ; Detection mechanism (identical to the one proven working in HOOK3.asm):
 ; DOS is single-tasking, so if int 0x61 fires a SECOND time after we saw an
