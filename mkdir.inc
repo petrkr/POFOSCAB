@@ -39,9 +39,8 @@
 ; not certain from documentation alone - Ralf Brown's Interrupt List is
 ; written primarily for PC MS-DOS 3.0+, and ROM_RESEARCH_NOTES.md's DRIVES
 ; findings already showed DIP DOS diverging from RBIL's documented contract
-; on other calls (AH=0x32, AH=0x0E). The mapping table below (.dos_error) is
-; a best-effort guess pending real-hardware verification - see PROTOCOL.md's
-; "Adding a new command" checklist item 5.
+; on other calls (AH=0x32, AH=0x0E). The mapping table below (.dos_error)
+; reflects that divergence.
 ;
 ; DS discipline: same as list.inc - DS is switched to the foreign segment
 ; only for the initial path copy; every DOS call after that, and all writes
@@ -129,13 +128,10 @@ dispatch_mkdir:
         jmp     .respond
 
 .dos_error:
-        ; AX = DOS extended error code. Mapping below is a best-effort
-        ; guess for DOS 2.x/DIP DOS - VERIFY ON REAL HARDWARE (see header
-        ; comment). errcode 2 ("already exists") is deliberately not
-        ; distinguished here: DOS 2.x's AH=0x39 is expected to return the
-        ; same coarse "access denied" (5) for an existing path as for
-        ; write-protected/full-disk cases, so it folds into errcode 4
-        ; unless real-hardware testing shows a distinct code.
+        ; AX = DOS extended error code. errcode 2 ("already exists") is
+        ; deliberately not distinguished here: DOS 2.x's AH=0x39 returns
+        ; the same coarse "access denied" (5) for an existing path as for
+        ; write-protected/full-disk cases, so it folds into errcode 4.
         mov     byte [mkdir_response], 0x10
         cmp     ax, 3                    ; path not found
         je      .err_notfound

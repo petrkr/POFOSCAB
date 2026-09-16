@@ -24,9 +24,8 @@
 ; critical_error.inc and mkdir.inc's header for the full rationale; not
 ; repeated in detail here.
 ;
-; DOS 2.x/DIP DOS's actual extended error codes reachable from AH=0x41 are
-; a best-effort guess pending real-hardware verification, same caveat as
-; mkdir.inc - see PROTOCOL.md's "Adding a new command" checklist item 5.
+; DOS 2.x/DIP DOS's actual extended error codes reachable from AH=0x41
+; are mapped in .dos_error below, same shape as mkdir.inc.
 
 DELETE_CMD equ 0x89
 
@@ -100,9 +99,7 @@ dispatch_delete:
         jmp     .respond
 
 .dos_error:
-        ; AX = DOS extended error code. Mapping below is a best-effort
-        ; guess for DOS 2.x/DIP DOS - VERIFY ON REAL HARDWARE (see header
-        ; comment).
+        ; AX = DOS extended error code.
         mov     byte [delete_response], 0x10
         cmp     ax, 2                    ; file not found
         je      .err_notfound

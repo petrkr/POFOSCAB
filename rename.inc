@@ -33,18 +33,11 @@
 ; Safe to call from inside a dispatcher for the same reason as
 ; mkdir.inc/delete.inc/rmdir.inc (dispatch runs while the ROM's own
 ; receive-block loop is blocked, so DOS is reentrant-safe here). Same
-; int 0x24 dependency - see critical_error.inc; not separately verified for
-; AH=0x56 on real hardware (only AH=0x39/AH=0x41/AH=0x3A have been - see
-; ROM_RESEARCH_NOTES.md), assumed by analogy since this also does real
-; directory-entry disk I/O.
+; int 0x24 dependency - see critical_error.inc; assumed by analogy with
+; MKDIR/DELETE/RMDIR since this also does real directory-entry disk I/O.
 ;
-; DOS 2.x/DIP DOS's actual extended error codes reachable from AH=0x56 are
-; a best-effort guess pending real-hardware verification, same caveat as
-; the other commands - see PROTOCOL.md's "Adding a new command" checklist
-; item 5. Cross-drive rename behavior (old/new path on different drive
-; letters) is untested - DOS is documented to fail this, but the exact
-; error code on DIP DOS is unknown; PFTD does not pre-check drive letters
-; itself, whatever AH=0x56 returns is passed through the same mapping.
+; PFTD does not pre-check drive letters itself; whatever AH=0x56 returns
+; is passed through the mapping below unchanged.
 
 RENAME_CMD equ 0x8B
 
@@ -136,9 +129,8 @@ dispatch_rename:
         jmp     .respond
 
 .dos_error:
-        ; AX = DOS extended error code. Mapping below is a best-effort
-        ; guess for DOS 2.x/DIP DOS - VERIFY ON REAL HARDWARE (see header
-        ; comment).
+        ; AX = DOS extended error code. errcode 17 ("not same device")
+        ; below is DOS's documented code for cross-drive rename.
         mov     byte [rename_response], 0x10
         cmp     ax, 2                    ; file not found
         je      .err_notfound

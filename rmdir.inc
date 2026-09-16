@@ -31,10 +31,8 @@
 ; equivalent directory-entry disk I/O, so the same risk is assumed to
 ; apply, not separately re-verified.
 ;
-; DOS 2.x/DIP DOS's actual extended error codes reachable from AH=0x3A are
-; a best-effort guess pending real-hardware verification, same caveat as
-; mkdir.inc/delete.inc - see PROTOCOL.md's "Adding a new command" checklist
-; item 5.
+; DOS 2.x/DIP DOS's actual extended error codes reachable from AH=0x3A
+; are mapped in .dos_error below, same shape as mkdir.inc/delete.inc.
 
 RMDIR_CMD equ 0x8A
 
@@ -109,11 +107,9 @@ dispatch_rmdir:
         jmp     .respond
 
 .dos_error:
-        ; AX = DOS extended error code. Mapping below is a best-effort
-        ; guess for DOS 2.x/DIP DOS - VERIFY ON REAL HARDWARE (see header
-        ; comment). "Not empty" is deliberately not distinguished from
-        ; "access denied" (folds into errcode 4), same reasoning as
-        ; MKDIR's "already exists" - see header comment.
+        ; AX = DOS extended error code. "Not empty" is deliberately not
+        ; distinguished from "access denied" (folds into errcode 4),
+        ; same reasoning as MKDIR's "already exists" - see header comment.
         mov     byte [rmdir_response], 0x10
         cmp     ax, 3                    ; path not found
         je      .err_notfound

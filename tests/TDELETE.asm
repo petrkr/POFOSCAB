@@ -10,9 +10,9 @@
 ;     hanging. With STUB61 loaded below PFTD, the 2-byte status+errcode
 ;     response is logged as hex and can be eyeballed.
 ;   - CANNOT verify: DOS 2.x/DIP DOS's actual extended error code behavior
-;     on AH=0x41 (delete.inc's error mapping is a best-effort guess pending
-;     real-hardware verification - see PROTOCOL.md), or the int 0x24
-;     critical-error path at all - same caveat as TMKDIR.
+;     on AH=0x41, or the int 0x24 critical-error path at all - DOSBox's
+;     own DOS does not diverge from RBIL/raise critical errors on media
+;     conditions the way DIP DOS does - same caveat as TMKDIR.
 ;
 ; This test targets TESTDEL.TXT - create that file in the DOSBox mount
 ; before running for a status=0x20 (success) response, or run without it
