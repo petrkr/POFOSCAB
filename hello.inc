@@ -17,9 +17,10 @@
 ;
 ; HELLO response layout (fixed 12 bytes):
 ;   offset 0-3  magic "PFD1"
-;   offset 4-7  build id (4 bytes, binary). VERSION/BUILD_ID come from
-;               version.inc - see that file for how the build id is
-;               assigned before vs. after this driver is committed.
+;   offset 4-7  build id (4 bytes, binary). VERSION comes from
+;               version.inc, BUILD_ID from build_id.inc (kept separate
+;               since CI regenerates the latter wholesale per build -
+;               see build_id.inc's header).
 ;   offset 8    version   (1 = this format; 0xFF = extended - offset 9 is
 ;                          then an extended version number and everything
 ;                          from there on is redefined per that version,
@@ -39,6 +40,7 @@
 ;   bit 5  CAP_RENAME   - RENAME (0x8B, see rename.inc) supported
 
 %include "version.inc"
+%include "build_id.inc"
 
 HELLO_CMD equ 0x80
 CAP_LIST_EXT equ 0x01
