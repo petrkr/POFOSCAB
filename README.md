@@ -75,6 +75,12 @@ whole story.
   each is fully self-contained. `STUB61.asm` is a minimal stand-in
   `int 0x61` handler PFTD's chain can safely jump to under DOSBox
   (which has no real ROM handler there).
+- `tests/regression_test.py` - the one tool in `tests/` that talks to
+  real hardware instead of DOSBox: a fast smoke test over a live
+  client's `/sendRaw` debug endpoint, covering every command's
+  happy-path shape. Meant to be run after flashing a new build, before
+  anything more targeted - see the script's own header. Not a
+  replacement for `STATUS.md`'s real-hardware test matrix.
 
 ## Building
 
