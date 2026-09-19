@@ -1,277 +1,249 @@
 # PFTD protocol reference
 
-Command byte layout is source-of-truth in code (`*.inc` in this repo)
-- this is a summary to keep in sync with it, not a replacement for
-reading the code.
+PFTD is a command protocol for the Atari Portfolio's Smart Cable
+interface (`int 0x61`). It extends the Portfolio ROM's built-in file
+transfer protocol with additional commands - directory listing with
+attributes, directory/file management, copying, and clock access.
 
-This repo implements the Atari-side (server) half of the protocol
-described here - `PFTD.asm` + its `.inc` modules. The client side
-consuming this protocol lives elsewhere and is out of scope for this
-repo.
+This document specifies the wire format. The reference implementation
+in this repository is the source of truth if anything here is unclear
+or ambiguous.
 
-## Overview
+## Transport
 
-`payload[0]` selects the command:
+Every command is sent as a block over `int 0x61 AH=0x30` (the
+Portfolio's Smart Cable send/receive primitive):
 
-- `[2, 6]` - built into the Portfolio ROM's "File transfer Server" mode,
-  fixed dispatch, cannot be extended (see `rom/ROM_RESEARCH_NOTES.md`
-  for the reverse-engineering that established this).
-- `0x80+` - PFTD-only command space, handled entirely by the PFTD TSR
-  (this repo), no ROM involvement.
+- **Send** (client -> Portfolio): `AH=0x30 AL=1`, a length-prefixed
+  block containing the request bytes described below.
+- **Receive** (Portfolio -> client): `AH=0x30 AL=0`, a length-prefixed
+  block containing the response bytes.
 
-Transport for both ranges is the same `sendBlock`/`receiveBlock`
-handshake over `int 0x61 AH=0x30`.
+The first byte of every request, `payload[0]`, selects the command:
 
-## ROM commands (2-6)
+| Range | Meaning |
+|---|---|
+| `0x00`-`0x06` | ROM-native commands, built into the Portfolio's File Transfer Server. |
+| `0x80`-`0xFF` | PFTD commands, described in this document. |
+
+## ROM commands (`0x00`-`0x06`)
+
+These are handled directly by the Portfolio ROM and cannot be
+extended. Included here for completeness, since PFTD commands share
+the same transport and some response conventions.
 
 | Code | Purpose |
 |---|---|
-| `0x02` | Receive file (Portfolio -> client) |
-| `0x03` | Transmit init (client -> Portfolio) |
-| `0x05` | Transmit overwrite confirm |
-| `0x06` | List (legacy, names only) |
-| `0x00` | Cancel transfer, sent when overwrite is declined |
+| `0x00` | Cancel transfer (sent when an overwrite prompt is declined). |
+| `0x02` | Receive file (Portfolio -> client). |
+| `0x03` | Transmit init (client -> Portfolio). |
+| `0x05` | Transmit overwrite confirm. |
+| `0x06` | List directory (names only). |
 
-Response control byte conventions: `0x10` = error (bad path/disk
-full/not found), `0x20` = ok / file exists (upload) / transfer done.
+Response control byte: `0x10` = error (bad path, disk full, not
+found), `0x20` = ok (or "file exists" during upload, or "transfer
+done").
 
-## PFTD commands (0x80+)
+## PFTD commands (`0x80`+)
 
-### HELLO (`0x80`)
+### HELLO - `0x80`
 
-Presence/capability discovery. Request: single byte `0x80`. Response
-(fixed 12 bytes):
+Presence and capability discovery. Always the first command a client
+should send after connecting.
 
-| Offset | Size | Content |
+**Request:** 1 byte - `0x80`.
+
+**Response:** 12 bytes, fixed length.
+
+| Offset | Size | Field | Description |
+|---|---|---|---|
+| 0 | 4 | Magic | ASCII `"PFD1"`. |
+| 4 | 4 | Build ID | Binary, little-endian. Identifies the exact build of the server. |
+| 8 | 1 | Version | `1` = this format. `0xFF` = extended format; see below. |
+| 9 | 1 | Capabilities | Bitmask, see [Capabilities](#capabilities-bitmask). |
+| 10 | 2 | Reserved | Always `0x00 0x00`. |
+
+If offset 8 is `0xFF`, the response format from offset 9 onward is
+redefined by whatever extended version number follows at offset 9 -
+none is defined at the time of writing.
+
+### LIST - `0x86`
+
+Directory listing with per-entry attributes, size, and timestamp, plus
+free/total drive space. A superset of ROM command `0x06` (names only).
+
+**Request:** `0x86, 0x00, 0x70` followed by an ASCIIZ search pattern
+(e.g. `"C:\*.*"`).
+
+**Response:** variable length.
+
+| Offset | Size | Field |
 |---|---|---|
-| 0-3 | 4B | magic `"PFD1"` |
-| 4-7 | 4B | build id (binary, LE) |
-| 8 | 1B | version (`1` = this format; `0xFF` = extended, offset 9 carries an extended version number and everything after is redefined) |
-| 9 | 1B | capabilities bitmask |
-| 10-11 | 2B | reserved (`0x00, 0x00`) |
+| 0 | 2 | Entry count, little-endian. |
+| 2 | *(count entries)* | Entries - see below. |
+| ... | 4 | Free bytes on the pattern's drive, little-endian. |
+| ... | 4 | Total bytes on the pattern's drive, little-endian. |
 
-- Atari: `hello.inc` (`HELLO_CMD`, `hello_response`, `dispatch_hello`).
+Each entry:
 
-### LIST extended (`0x86`)
-
-Same request prefix as ROM's `list` (`0x86, 0x00, 0x70` + ASCIIZ
-pattern), response adds attributes/size/date/time per entry plus
-free/total drive space at the end.
-
-Response: `count(2B LE)` + N x `[attr(1B) + size(4B LE) + date(2B
-packed DOS) + time(2B packed DOS) + name(ASCIIZ)]` + `free(4B LE) +
-total(4B LE)`. Free/total is per-drive (from the pattern's drive
-letter, or the current default drive), always present regardless of
-capability bit.
-
-- Atari: `list.inc` (`LIST_CMD`, `dispatch_list`).
-
-### DRIVES (`0x87`)
-
-How many logical DOS drives exist (`A=1, B=2, ...`). Request: single
-byte `0x87`. Response: single byte, drive count.
-
-- Atari: `drives.inc` (`DRIVES_CMD`, `dispatch_drives`).
-
-### MKDIR (`0x88`)
-
-Create a directory on the Portfolio (`int 0x21 AH=0x39`). Request:
-`0x88, 0x00, 0x70` + ASCIIZ target path. Response (fixed 2 bytes): see
-"Response status/errcode convention" below.
-
-- Atari: `mkdir.inc` (`MKDIR_CMD`, `dispatch_mkdir`).
-
-### DELETE (`0x89`)
-
-Delete a file on the Portfolio (`int 0x21 AH=0x41`, Unlink - files only;
-directory removal is RMDIR, `0x8A`, below). Request: `0x89, 0x00, 0x70` +
-ASCIIZ target path.
-Response (fixed 2 bytes): see "Response status/errcode convention" below.
-
-- Atari: `delete.inc` (`DELETE_CMD`, `dispatch_delete`).
-
-### RMDIR (`0x8A`)
-
-Remove an empty directory on the Portfolio (`int 0x21 AH=0x3A`). Request:
-`0x8A, 0x00, 0x70` + ASCIIZ target path. Response (fixed 2 bytes): see
-"Response status/errcode convention" below. "Not empty" is not
-distinguished from "access denied" (errcode `4`) - DOS 2.x has no separate
-code for this, same coarse-granularity situation as MKDIR's "already
-exists" (confirmed on real hardware, see `ROM_RESEARCH_NOTES.md`).
-
-- Atari: `rmdir.inc` (`RMDIR_CMD`, `dispatch_rmdir`).
-
-### RENAME (`0x8B`)
-
-Rename or move a file/directory on the Portfolio (`int 0x21 AH=0x56`).
-Works as a move within the same drive (DOS rename is a directory-entry
-rewrite, not a data copy) but NOT across drives - confirmed on real
-hardware (`errcode=4`, both for a file and a directory; see
-`STATUS.md`). For a cross-drive move, use COPY (`0x8C`) followed by
-DELETE/RMDIR.
-
-Request: `0x8B, 0x00, 0x70` + TWO consecutive ASCIIZ strings (old path,
-then new path, new path immediately following old path's NUL). Response
-(fixed 2 bytes): see "Response status/errcode convention" below.
-
-- Atari: `rename.inc` (`RENAME_CMD`, `dispatch_rename`).
-
-### COPY (`0x8C`)
-
-Copy a file on the Portfolio, source to destination (`int 0x21
-AH=0x3D/0x3C/0x3F/0x40/0x3E` - Open/Create/Read/Write/Close). Files
-only - no directory recursion. Unlike RENAME, works cross-drive since
-it performs a real read/write data copy, not a directory-entry
-rewrite. The destination is always overwritten if it exists (no "fail
-if exists" mode - matches DOS's own `COPY` command); its DOS attribute
-byte is set to match the source's. If the copy fails partway (disk
-full, media pulled, critical error), the partially-written destination
-file is deleted before responding.
-
-Request: `0x8C, 0x00, 0x70` + TWO consecutive ASCIIZ strings (source
-path, then destination path, destination immediately following
-source's NUL) - identical shape to RENAME's request. Response (fixed 2
-bytes): see "Response status/errcode convention" below.
-
-No progress reporting - `dispatch_copy` runs the entire copy loop
-synchronously and sends exactly one response at the end, same as every
-other PFTD command (see `copy.inc`'s header for why intermediate
-progress packets are out of scope for now).
-
-- Atari: `copy.inc` (`COPY_CMD`, `dispatch_copy`).
-
-### GETDATETIME (`0x8D`)
-
-Read the Portfolio's current system date and time (`int 0x21
-AH=0x2A`/`AH=0x2C` - Get Date/Get Time). Request: single byte `0x8D`
-(no path). Response (fixed 4 bytes): `date(2B packed DOS)` +
-`time(2B packed DOS)` - same packed format LIST extended already uses
-for a file's date/time (bits 15-9=year-1980/8-5=month/4-0=day for
-date, bits 15-11=hour/10-5=minute/4-0=second/2 for time). No
-status/errcode byte - `AH=0x2A`/`AH=0x2C` have no documented failure
-mode, same as `DRIVES`'s plain response.
-
-- Atari: `datetime.inc` (`GETDATETIME_CMD`, `dispatch_getdatetime`).
-
-### SETDATETIME (`0x8E`)
-
-Set the Portfolio's system date and time (`int 0x21 AH=0x2B`/`AH=0x2D`
-- Set Date/Set Time). Request: `0x8E, 0x00, 0x70` + `date(2B packed
-DOS)` + `time(2B packed DOS)` - same packed format as `GETDATETIME`,
-a fixed-size binary payload (not ASCIIZ). Response (fixed 2 bytes):
-see "Response status/errcode convention" below - errcode `4` if either
-DOS call rejects the value as out of range (`AL=0xFF`, the only
-documented failure mode for either call).
-
-- Atari: `datetime.inc` (`SETDATETIME_CMD`, `dispatch_setdatetime`).
-
-### Response status/errcode convention (MKDIR/DELETE/RMDIR/RENAME/COPY/SETDATETIME)
-
-MKDIR, DELETE, RMDIR, RENAME, COPY and SETDATETIME are the PFTD
-commands that can genuinely fail and share this 2-byte response shape.
-MKDIR/DELETE/RMDIR/RENAME/COPY perform real disk I/O from inside the
-`int 0x61` dispatch hook - which requires a resident `int 0x24` (DOS
-critical error) handler (`critical_error.inc`) to avoid blocking on
-"Abort, Retry, Ignore?" on a drive with no media (see
-`ROM_RESEARCH_NOTES.md`'s DIP DOS critical-error findings from DRIVES
-development). SETDATETIME does not touch disk/media at all
-(`AH=0x2B`/`AH=0x2D` are pure DOS-internal clock writes) but still
-defensively clears/checks the same `critical_error_flag` - see
-`datetime.inc`'s header for why.
-
-Response is always exactly 2 bytes:
-
-| Offset | Size | Content |
+| Offset | Size | Field |
 |---|---|---|
-| 0 | 1B | status: `0x20` = ok, `0x10` = error (reusing the ROM commands' convention) |
-| 1 | 1B | errcode: `0` on success; on failure, one of the table below |
+| 0 | 1 | Attribute byte (standard DOS: bit 0 read-only, bit 1 hidden, bit 2 system, bit 4 directory, bit 5 archive). |
+| 1 | 4 | File size, little-endian. `0` for directories. |
+| 5 | 2 | Date, packed DOS format - see [Packed date/time](#packed-datetime-format). |
+| 7 | 2 | Time, packed DOS format. |
+| 9 | *(variable)* | Name, ASCIIZ (8.3 format, up to 12 bytes including terminator). |
 
-| errcode | Meaning | Used by |
+The free/total drive space fields follow immediately after the last
+entry - they are not counted in the entry count and are always
+present.
+
+### DRIVES - `0x87`
+
+Number of logical drives the Portfolio knows about.
+
+**Request:** 1 byte - `0x87`.
+
+**Response:** 1 byte - drive count `N`. Drives map to letters `A`
+through the `N`th letter of the alphabet, contiguous with no gaps.
+
+### MKDIR - `0x88`
+
+Create a directory.
+
+**Request:** `0x88, 0x00, 0x70` followed by an ASCIIZ target path.
+
+**Response:** see [Status/errcode response](#statuserrcode-response).
+
+### DELETE - `0x89`
+
+Delete a file. Files only - use RMDIR (`0x8A`) for directories.
+
+**Request:** `0x89, 0x00, 0x70` followed by an ASCIIZ target path.
+
+**Response:** see [Status/errcode response](#statuserrcode-response).
+
+### RMDIR - `0x8A`
+
+Remove an empty directory.
+
+**Request:** `0x8A, 0x00, 0x70` followed by an ASCIIZ target path.
+
+**Response:** see [Status/errcode response](#statuserrcode-response).
+`errcode 4` covers both "access denied" and "directory not empty" -
+the underlying DOS call does not distinguish these cases.
+
+### RENAME - `0x8B`
+
+Rename or move a file or directory within the same drive. Renaming
+across drives is not supported - use COPY (`0x8C`) followed by DELETE
+or RMDIR instead.
+
+**Request:** `0x8B, 0x00, 0x70` followed by two consecutive ASCIIZ
+strings: the current path, then the new path (the new path begins
+immediately after the current path's NUL terminator).
+
+**Response:** see [Status/errcode response](#statuserrcode-response).
+`errcode 4` covers "access denied", "destination already exists", and
+"cross-drive rename attempted".
+
+### COPY - `0x8C`
+
+Copy a file from a source path to a destination path. Files only, no
+directory recursion. Unlike RENAME, this works across drives.
+
+The destination is always overwritten if it already exists. Its DOS
+attribute byte is set to match the source's. If the copy fails
+partway through, the partially-written destination is removed - a
+failed COPY never leaves a corrupt file behind.
+
+**Request:** `0x8C, 0x00, 0x70` followed by two consecutive ASCIIZ
+strings: the source path, then the destination path (immediately
+following the source path's NUL terminator).
+
+**Response:** see [Status/errcode response](#statuserrcode-response).
+
+This command has no progress reporting - the response is sent only
+once the entire copy has completed or failed.
+
+### GETDATETIME - `0x8D`
+
+Read the Portfolio's current system date and time.
+
+**Request:** 1 byte - `0x8D`.
+
+**Response:** 4 bytes, fixed length.
+
+| Offset | Size | Field |
 |---|---|---|
-| `1` | file/path not found | MKDIR, DELETE, RMDIR, RENAME, COPY |
-| `2` | already exists (reserved - see note below, not currently reachable) | MKDIR only |
-| `3` | disk full | MKDIR, COPY (also covers a short write - see `copy.inc`) |
-| `4` | access denied (write-protected, read-only, or DOS 2.x's coarse catch-all - also covers "already exists" (MKDIR), "not empty" (RMDIR), "destination exists"/"cross-drive" (RENAME, confirmed on real hardware), too-many-open-files (COPY)); for SETDATETIME, an out-of-range date/time value (`AL=0xFF`) | MKDIR, DELETE, RMDIR, RENAME, COPY, SETDATETIME |
-| `0xFF` | critical error fired (`int 0x24` Ignore path taken) - `AX` not trustworthy, cause unknown | MKDIR, DELETE, RMDIR, RENAME, COPY, SETDATETIME (unexpected for the latter - see `datetime.inc`) |
+| 0 | 2 | Date, packed DOS format - see [Packed date/time](#packed-datetime-format). |
+| 2 | 2 | Time, packed DOS format. |
 
-**Confirmed on real hardware** (see `ROM_RESEARCH_NOTES.md`'s MKDIR/DELETE
-test results): DOS 2.x/DIP DOS's `AH=0x39` returns the same code (5, access
-denied) for "directory already exists" as for other access-denied cases -
-no distinct code exists on this DOS version. Errcode `2` is therefore not
-currently produced by `mkdir.inc`; it remains reserved in this enum in case
-a future DOS version or code path needs it, not because it's expected soon.
-`AH=0x3A` (RMDIR)'s "not empty" case is assumed to behave the same way
-(access denied, errcode `4`) by analogy, not separately confirmed.
-RENAME's cross-drive behavior (`errcode=4`) is confirmed on real
-hardware; other RENAME scenarios remain unverified - see `STATUS.md`.
+This command cannot fail and has no status/errcode byte.
 
-COPY's `AH=0x3D/0x3C/0x3F/0x40` error mapping in `copy.inc` is
-entirely unverified on real hardware - this repo has no prior usage of
-these DOS functions to compare against. See `STATUS.md` and
-`copy.inc`'s header for what's confirmed vs. still open.
+### SETDATETIME - `0x8E`
 
-GETDATETIME/SETDATETIME's `AH=0x2A/0x2B/0x2C/0x2D` are entirely
-unverified on real hardware, same as COPY - including the assumption
-(by analogy with `DRIVES`'s confirmed-I/O-free `AH=0x0E`/`AH=0x19`)
-that neither call can raise a critical error. See `STATUS.md` and
-`datetime.inc`'s header for what's confirmed vs. still open.
+Set the Portfolio's system date and time.
 
-## Capabilities bitmask (HELLO response, offset 9)
+**Request:** `0x8E, 0x00, 0x70` followed by 4 bytes: packed date (2
+bytes), then packed time (2 bytes) - same format as GETDATETIME's
+response, sent as fixed-size binary rather than ASCIIZ.
 
-Grouped by category, not one bit per command - this protocol has never
-shipped a version with only some commands present (every command that
-exists has always been added together; the old 1-bit-per-command
-layout was a development convenience for the web client, not a real
-partial-support signal), so bits are spent on unrelated future command
-*families*, not individually reclaimable per-command distinctions that
-would never actually vary in practice. See `hello.inc`'s header for
-the full reasoning.
+**Response:** see [Status/errcode response](#statuserrcode-response).
+`errcode 4` means the date or time value was out of range.
 
-| Bit | Constant | Meaning |
+## Status/errcode response
+
+MKDIR, DELETE, RMDIR, RENAME, COPY, and SETDATETIME share this
+response shape - it is always exactly 2 bytes:
+
+| Offset | Size | Field |
 |---|---|---|
-| 0 (`0x01`) | `CAP_CORE` | LIST extended/DRIVES/MKDIR/DELETE/RMDIR/RENAME/COPY (`0x86`-`0x8C`) all supported |
-| 1 (`0x02`) | `CAP_DATETIME` | GETDATETIME/SETDATETIME (`0x8D`/`0x8E`) supported |
+| 0 | 1 | Status: `0x20` = ok, `0x10` = error. |
+| 1 | 1 | Error code (`0` on success; see table below on failure). |
 
-Defined in `hello.inc`; currently both bits are always set.
+| Code | Meaning |
+|---|---|
+| `0` | Success. |
+| `1` | Path or file not found. |
+| `2` | Already exists. Reserved - not currently produced by any command. |
+| `3` | Disk full. |
+| `4` | Access denied - covers write-protected media, read-only files, "already exists", "not empty", "destination exists", "cross-drive operation attempted", and out-of-range date/time values, depending on command. |
+| `0xFF` | An unrecoverable error occurred; the specific cause could not be determined. |
 
-## Version / BUILD_ID
+## Capabilities bitmask
 
-`version.inc`:
+The capabilities byte in the HELLO response (offset 9) is grouped by
+command *family*, not one bit per individual command - most bits are
+reserved for families that don't exist yet.
 
-```asm
-VERSION   equ 1
-```
+| Bit | Mask | Meaning |
+|---|---|---|
+| 0 | `0x01` | Core file operations: LIST, DRIVES, MKDIR, DELETE, RMDIR, RENAME, COPY (`0x86`-`0x8C`). |
+| 1 | `0x02` | Clock access: GETDATETIME, SETDATETIME (`0x8D`-`0x8E`). |
+| 2-7 | - | Reserved for future command families. |
 
-`build_id.inc`:
+## Packed date/time format
 
-```asm
-BUILD_ID  equ 0xFFFF0010   ; dev snapshot marker
-```
+Dates and times are represented in the same packed 16-bit format DOS
+uses in directory entries:
 
-`BUILD_ID` lives in its own file (`build_id.inc`) because CI
-regenerates it wholesale on every build (see that file's header and
-`.github/workflows/build.yml`) with the commit's short git hash - the
-value committed in the repo is only a local dev snapshot placeholder,
-never a real release marker.
+**Date** (2 bytes):
 
-## Adding a new command
+| Bits | Field |
+|---|---|
+| 15-9 | Year, offset from 1980 (range 1980-2107). |
+| 8-5 | Month (1-12). |
+| 4-0 | Day (1-31). |
 
-1. Pick the next free code (`0x8F+` - `0x81`-`0x85` are reserved,
-   unused so far; `0x88`/`0x89`/`0x8A`/`0x8B`/`0x8C`/`0x8D`/`0x8E` are
-   taken by MKDIR/DELETE/RMDIR/RENAME/COPY/GETDATETIME/SETDATETIME).
-2. Decide whether it belongs to an existing capability group
-   (`CAP_CORE`) or needs a new bit for a new command family (see
-   `hello.inc`'s header for why bits are grouped, not one per
-   command) - don't add a new bit for a command that's just another
-   file operation.
-3. Implement `dispatch_<name>` in a new or existing `*.inc` file here,
-   wire it into `PFTD.asm`'s command detection.
-4. Add a standalone DOSBox test tool in `tests/` (see
-   `TLISTEXT.COM`/`TDRIVES.COM`) and verify on real hardware before
-   trusting any RBIL-documented DOS function contract - DIP DOS
-   diverges from PC MS-DOS behavior in ways DOSBox won't reveal (see
-   `ROM_RESEARCH_NOTES.md`'s DIP DOS critical error section).
+**Time** (2 bytes):
 
-## Reserved / not yet implemented
+| Bits | Field |
+|---|---|
+| 15-11 | Hour (0-23). |
+| 10-5 | Minute (0-59). |
+| 4-0 | Second, divided by 2 (range 0-29; odd seconds are not representable). |
 
-- `0x81`-`0x85`, `0x8F+`: reserved, unused.
+## Reserved command codes
+
+`0x81`-`0x85` and `0x8F`-`0xFF` are unassigned.

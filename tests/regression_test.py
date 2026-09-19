@@ -17,12 +17,12 @@
 #   - COPY (0x8C) has no higher-level endpoint at all yet, so raw bytes
 #     are the only way to exercise it externally
 #
-# This is NOT a substitute for the test matrix in STATUS.md (write-
-# protected media, no-media critical-error paths, large-file COPY
-# looping, etc.) - it only checks that the common/happy-path shape of
-# each command still works after a change, fast enough to run after
-# every rebuild. Creates and deletes its own throwaway files/dirs
-# (prefixed R) on C:/A: - never touches anything else on the card.
+# This is NOT exhaustive (write-protected media, no-media
+# critical-error paths, large-file COPY looping, etc. are not covered)
+# - it only checks that the common/happy-path shape of each command
+# still works after a change, fast enough to run after every rebuild.
+# Creates and deletes its own throwaway files/dirs (prefixed R) on
+# C:/A: - never touches anything else on the card.
 #
 # Usage: python3 regression_test.py <base_url>
 #   e.g. python3 regression_test.py http://10.220.179.55
@@ -153,8 +153,7 @@ def main():
 
     # GETDATETIME (0x8D): single-byte request, 4-byte packed date+time
     # response, no status/errcode. Just confirm it returns 4 bytes and
-    # decodes to a plausible date (this repo has zero prior real-HW
-    # usage of AH=0x2A/0x2C - see STATUS.md).
+    # decodes to a plausible date.
     r = send_raw("8d")
     ok = len(r) == 8
     results.append(("GETDATETIME basic", ok))
@@ -177,7 +176,7 @@ def main():
     # SETDATETIME (0x8E) round-trip: set a known date/time, read it
     # back via GETDATETIME, confirm it stuck.
     set_date = pack_date(2026, 9, 19)
-    set_time = pack_time(14, 30, 0)
+    set_time = pack_time(23, 00, 0)
     payload = bytes([set_date & 0xFF, set_date >> 8, set_time & 0xFF, set_time >> 8])
     r = send_raw(req_bin(0x8E, payload))
     check("SETDATETIME valid value", r, 0x20, 0)
@@ -192,8 +191,7 @@ def main():
         print(f"[{'PASS' if roundtrip_ok else 'FAIL'}] SETDATETIME round-trip: date={got_date:#06x} (expected {set_date:#06x}), hour={got_time_hour} (expected 14)")
 
     # SETDATETIME with an out-of-range month (13): expect errcode=4,
-    # per RBIL's documented AL=0xFF failure mode - unverified on real
-    # DIP DOS until this test runs (see STATUS.md).
+    # per RBIL's documented AL=0xFF failure mode.
     bad_date = pack_date(2026, 13, 1)
     payload = bytes([bad_date & 0xFF, bad_date >> 8, 0x00, 0x00])
     r = send_raw(req_bin(0x8E, payload))

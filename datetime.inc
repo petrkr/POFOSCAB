@@ -47,14 +47,10 @@
 ; access at all - the same category as drives.inc's AH=0x0E/AH=0x19,
 ; which this driver confirmed critical-error-free on real Portfolio
 ; hardware. By analogy, these four calls are expected to need no
-; critical_error_flag handling either - but this is NOT independently
-; confirmed on real hardware (unlike AH=0x0E/AH=0x19, which was
-; specifically tested); this repo has zero prior usage of any of these
-; four DOS functions. SETDATETIME still clears/checks
+; critical_error_flag handling either. SETDATETIME still clears/checks
 ; critical_error_flag around both AH=0x2B and AH=0x2D defensively
 ; (cheap insurance, consistent with every command that touches DOS
-; state) even though it is expected to never fire - see STATUS.md for
-; current verification state.
+; state) even though it is expected to never fire.
 
 GETDATETIME_CMD equ 0x8D
 SETDATETIME_CMD equ 0x8E

@@ -83,8 +83,7 @@ whole story.
   real hardware instead of DOSBox: a fast smoke test over a live
   client's `/sendRaw` debug endpoint, covering every command's
   happy-path shape. Meant to be run after flashing a new build, before
-  anything more targeted - see the script's own header. Not a
-  replacement for `STATUS.md`'s real-hardware test matrix.
+  anything more targeted - see the script's own header.
 
 ## Building
 
@@ -141,7 +140,33 @@ particularly anything touching `int 0x21` disk I/O (`AH=0x39/0x3A/0x41/
 The full request/response byte layout for every command, the HELLO
 capability bitmask, and the status/errcode conventions are documented
 in [`PROTOCOL.md`](PROTOCOL.md) - that's the source of truth for the
-protocol itself. `ROM_RESEARCH_NOTES.md` has the underlying
+protocol itself, written as a standalone specification (no
+implementation details). `ROM_RESEARCH_NOTES.md` has the underlying
 reverse-engineering (ROM disassembly, real-hardware DOS 2.x/DIP DOS
 behavior findings) that the protocol design and this driver's
 implementation choices are based on.
+
+## Adding a new command
+
+1. Pick the next free code (see `PROTOCOL.md`'s "Reserved command
+   codes" section for what's currently free).
+2. Decide whether it belongs to an existing capability group or needs
+   a new bit for a new command family (see `hello.inc`'s header for
+   the reasoning behind grouping bits by family rather than one per
+   command) - don't add a new bit for a command that's just another
+   file operation.
+3. Document the wire format in `PROTOCOL.md` first, in the same style
+   as the existing commands - request/response byte layout only, no
+   implementation details.
+4. Implement `dispatch_<name>` in a new or existing `*.inc` file,
+   wire it into `PFTD.asm`'s command detection (`%include` plus the
+   `mov al, [cs:payload0]` / `call dispatch_<name>` pair in
+   `pftd_int61_handler`).
+5. Add a standalone DOSBox test tool in `tests/` (see `TLISTEXT.asm`/
+   `TDRIVES.asm` for the pattern) and verify on real hardware before
+   trusting any RBIL-documented DOS function contract - DIP DOS
+   diverges from PC MS-DOS behavior in ways DOSBox won't reveal (see
+   `ROM_RESEARCH_NOTES.md`'s DIP DOS critical error section).
+6. Add checks to `tests/regression_test.py` covering the new command's
+   happy path, so future changes get a fast real-hardware regression
+   check.
