@@ -140,15 +140,44 @@ progress packets are out of scope for now).
 
 - Atari: `copy.inc` (`COPY_CMD`, `dispatch_copy`).
 
-### Response status/errcode convention (MKDIR/DELETE/RMDIR/RENAME/COPY)
+### GETDATETIME (`0x8D`)
 
-MKDIR, DELETE, RMDIR, RENAME and COPY are the PFTD commands that can
-genuinely fail (bad path, already exists, disk full, no media,
-write-protected), and perform real disk I/O from inside the `int 0x61`
-dispatch hook - which requires a resident `int 0x24` (DOS critical error) handler
-(`critical_error.inc`) to avoid blocking on "Abort, Retry,
-Ignore?" on a drive with no media (see `ROM_RESEARCH_NOTES.md`'s DIP DOS
-critical-error findings from DRIVES development).
+Read the Portfolio's current system date and time (`int 0x21
+AH=0x2A`/`AH=0x2C` - Get Date/Get Time). Request: single byte `0x8D`
+(no path). Response (fixed 4 bytes): `date(2B packed DOS)` +
+`time(2B packed DOS)` - same packed format LIST extended already uses
+for a file's date/time (bits 15-9=year-1980/8-5=month/4-0=day for
+date, bits 15-11=hour/10-5=minute/4-0=second/2 for time). No
+status/errcode byte - `AH=0x2A`/`AH=0x2C` have no documented failure
+mode, same as `DRIVES`'s plain response.
+
+- Atari: `datetime.inc` (`GETDATETIME_CMD`, `dispatch_getdatetime`).
+
+### SETDATETIME (`0x8E`)
+
+Set the Portfolio's system date and time (`int 0x21 AH=0x2B`/`AH=0x2D`
+- Set Date/Set Time). Request: `0x8E, 0x00, 0x70` + `date(2B packed
+DOS)` + `time(2B packed DOS)` - same packed format as `GETDATETIME`,
+a fixed-size binary payload (not ASCIIZ). Response (fixed 2 bytes):
+see "Response status/errcode convention" below - errcode `4` if either
+DOS call rejects the value as out of range (`AL=0xFF`, the only
+documented failure mode for either call).
+
+- Atari: `datetime.inc` (`SETDATETIME_CMD`, `dispatch_setdatetime`).
+
+### Response status/errcode convention (MKDIR/DELETE/RMDIR/RENAME/COPY/SETDATETIME)
+
+MKDIR, DELETE, RMDIR, RENAME, COPY and SETDATETIME are the PFTD
+commands that can genuinely fail and share this 2-byte response shape.
+MKDIR/DELETE/RMDIR/RENAME/COPY perform real disk I/O from inside the
+`int 0x61` dispatch hook - which requires a resident `int 0x24` (DOS
+critical error) handler (`critical_error.inc`) to avoid blocking on
+"Abort, Retry, Ignore?" on a drive with no media (see
+`ROM_RESEARCH_NOTES.md`'s DIP DOS critical-error findings from DRIVES
+development). SETDATETIME does not touch disk/media at all
+(`AH=0x2B`/`AH=0x2D` are pure DOS-internal clock writes) but still
+defensively clears/checks the same `critical_error_flag` - see
+`datetime.inc`'s header for why.
 
 Response is always exactly 2 bytes:
 
@@ -162,8 +191,8 @@ Response is always exactly 2 bytes:
 | `1` | file/path not found | MKDIR, DELETE, RMDIR, RENAME, COPY |
 | `2` | already exists (reserved - see note below, not currently reachable) | MKDIR only |
 | `3` | disk full | MKDIR, COPY (also covers a short write - see `copy.inc`) |
-| `4` | access denied (write-protected, read-only, or DOS 2.x's coarse catch-all - also covers "already exists" (MKDIR), "not empty" (RMDIR), "destination exists"/"cross-drive" (RENAME, confirmed on real hardware), too-many-open-files (COPY)) | MKDIR, DELETE, RMDIR, RENAME, COPY |
-| `0xFF` | critical error fired (`int 0x24` Ignore path taken) - `AX` not trustworthy, cause unknown | MKDIR, DELETE, RMDIR, RENAME, COPY |
+| `4` | access denied (write-protected, read-only, or DOS 2.x's coarse catch-all - also covers "already exists" (MKDIR), "not empty" (RMDIR), "destination exists"/"cross-drive" (RENAME, confirmed on real hardware), too-many-open-files (COPY)); for SETDATETIME, an out-of-range date/time value (`AL=0xFF`) | MKDIR, DELETE, RMDIR, RENAME, COPY, SETDATETIME |
+| `0xFF` | critical error fired (`int 0x24` Ignore path taken) - `AX` not trustworthy, cause unknown | MKDIR, DELETE, RMDIR, RENAME, COPY, SETDATETIME (unexpected for the latter - see `datetime.inc`) |
 
 **Confirmed on real hardware** (see `ROM_RESEARCH_NOTES.md`'s MKDIR/DELETE
 test results): DOS 2.x/DIP DOS's `AH=0x39` returns the same code (5, access
@@ -181,6 +210,12 @@ entirely unverified on real hardware - this repo has no prior usage of
 these DOS functions to compare against. See `STATUS.md` and
 `copy.inc`'s header for what's confirmed vs. still open.
 
+GETDATETIME/SETDATETIME's `AH=0x2A/0x2B/0x2C/0x2D` are entirely
+unverified on real hardware, same as COPY - including the assumption
+(by analogy with `DRIVES`'s confirmed-I/O-free `AH=0x0E`/`AH=0x19`)
+that neither call can raise a critical error. See `STATUS.md` and
+`datetime.inc`'s header for what's confirmed vs. still open.
+
 ## Capabilities bitmask (HELLO response, offset 9)
 
 Grouped by category, not one bit per command - this protocol has never
@@ -195,10 +230,9 @@ the full reasoning.
 | Bit | Constant | Meaning |
 |---|---|---|
 | 0 (`0x01`) | `CAP_CORE` | LIST extended/DRIVES/MKDIR/DELETE/RMDIR/RENAME/COPY (`0x86`-`0x8C`) all supported |
-| 1 (`0x02`) | `CAP_DATETIME` | SETTIME/GETTIME supported (not yet implemented) |
+| 1 (`0x02`) | `CAP_DATETIME` | GETDATETIME/SETDATETIME (`0x8D`/`0x8E`) supported |
 
-Defined in `hello.inc`; currently `CAP_CORE` is always set,
-`CAP_DATETIME` is not (SETTIME/GETTIME don't exist yet).
+Defined in `hello.inc`; currently both bits are always set.
 
 ## Version / BUILD_ID
 
@@ -222,9 +256,9 @@ never a real release marker.
 
 ## Adding a new command
 
-1. Pick the next free code (`0x8D+` - `0x81`-`0x85` are reserved,
-   unused so far; `0x88`/`0x89`/`0x8A`/`0x8B`/`0x8C` are taken by
-   MKDIR/DELETE/RMDIR/RENAME/COPY).
+1. Pick the next free code (`0x8F+` - `0x81`-`0x85` are reserved,
+   unused so far; `0x88`/`0x89`/`0x8A`/`0x8B`/`0x8C`/`0x8D`/`0x8E` are
+   taken by MKDIR/DELETE/RMDIR/RENAME/COPY/GETDATETIME/SETDATETIME).
 2. Decide whether it belongs to an existing capability group
    (`CAP_CORE`) or needs a new bit for a new command family (see
    `hello.inc`'s header for why bits are grouped, not one per
@@ -240,6 +274,4 @@ never a real release marker.
 
 ## Reserved / not yet implemented
 
-- `0x81`-`0x85`, `0x8D+`: reserved, unused.
-- Planned ideas (SETTIME via `AH=0x2D`/`AH=0x2B`): rationale and
-  DOS-version caveats are in `ROM_RESEARCH_NOTES.md`.
+- `0x81`-`0x85`, `0x8F+`: reserved, unused.

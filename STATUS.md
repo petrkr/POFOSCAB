@@ -112,10 +112,13 @@ Partially verified on real hardware (build `0xFFFF0015`). Confirmed:
   byte-for-byte identical content (verified via download and diff).
   Source left untouched on `C:`. Device stayed responsive.
 
+- Copy from a nonexistent source (`C:\RNOTEXIST.TXT`, build
+  `0xFFFF0016`, via `tests/regression_test.py`): `errcode=1` (not
+  found), as expected.
+
 **Not yet verified - open items:**
 
 - Copy onto an existing destination (overwrite behavior).
-- Copy from a nonexistent source (`errcode=1` expected).
 - Copy to a full or write-protected destination (disk-full short-write
   detection and the partial-destination cleanup-on-failure path -
   the highest-risk new logic in this command, no analogue elsewhere
@@ -125,6 +128,47 @@ Partially verified on real hardware (build `0xFFFF0015`). Confirmed:
 - Destination attribute preservation (read-only/hidden/system byte
   copied from source via Find First) - not yet checked against actual
   DOS attribute output.
+
+## GETDATETIME/SETDATETIME (`0x8D`/`0x8E`)
+
+Verified on real hardware (build `0xFFFF0017`, via
+`tests/regression_test.py`). Confirmed:
+
+- `GETDATETIME`: returns a plausible packed date/time (4 bytes,
+  `status`/`errcode`-free as designed). Before any `SETDATETIME` call,
+  decoded to `1980-01-01 01:03:44` - DOS's default/unset clock value,
+  not a real-time-clock reading; this Portfolio does not appear to
+  retain time across power cycles on its own (or DOS starts from this
+  epoch regardless) - `AH=0x2A`/`AH=0x2C` themselves work correctly,
+  this is a fact about the device's clock state, not a bug.
+- `SETDATETIME` with a valid date/time (`2026-09-19 14:30:00`):
+  `status=0x20, errcode=0`, and a following `GETDATETIME` confirmed
+  the value actually stuck (packed date and hour matched exactly).
+- `SETDATETIME` with an out-of-range month (13): `status=0x10,
+  errcode=4` - confirms `AH=0x2B` returns `AL=0xFF` on DIP DOS as RBIL
+  documents, no divergence found here (unlike `AH=0x32`/`AH=0x36`).
+- No critical error fired for any of the above, and the device stayed
+  fully responsive throughout - confirms the `AH=0x0E`/`AH=0x19`
+  analogy (DRIVES) extends to `AH=0x2A/0x2B/0x2C/0x2D`: none of the
+  four touch disk/media, all four are critical-error-free on this
+  hardware.
+- Retested after a Portfolio restart: `GETDATETIME` still returned a
+  sane value - the clock survived the restart, it was not reset back
+  to the 1980 epoch. `SETDATETIME` to a new value, followed by
+  `GETDATETIME`, round-tripped correctly again.
+
+**Not yet verified - open items:**
+
+- `SETDATETIME` with other out-of-range values (invalid day, hour,
+  minute, second) - only an invalid month was tested.
+- Whether the clock surviving a restart is battery-backed RTC
+  persistence or something else - not investigated further, out of
+  scope for this driver.
+- Whether the Portfolio's System Setup clock display actually reflects
+  a `SETDATETIME` call (not cross-checked visually, only via
+  `GETDATETIME` round-trip).
+- Behavior across a real power cycle (does the clock reset to the
+  1980 epoch again, or does `SETDATETIME`'s effect persist?).
 
 ## Known dead ends / non-issues
 

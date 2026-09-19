@@ -49,10 +49,14 @@ whole story.
 - `rename.inc` - RENAME (`0x8B`): rename/move within the same drive.
 - `copy.inc` - COPY (`0x8C`): copy a file, source to destination,
   works cross-drive (unlike RENAME) since it does a real data copy.
+- `datetime.inc` - GETDATETIME (`0x8D`)/SETDATETIME (`0x8E`): read/set
+  the Portfolio's system date and time together, packed DOS format
+  (same as LIST extended's per-file date/time).
 - `critical_error.inc` - resident `int 0x24` (DOS critical error)
   handler, needed by any command that does real disk I/O (mkdir/
   delete/rmdir/rename/copy) so a missing/write-protected disk doesn't
-  hang on "Abort, Retry, Ignore?".
+  hang on "Abort, Retry, Ignore?". SETDATETIME uses it too,
+  defensively, though its DOS calls aren't expected to need it.
 - `residentcheck.inc` - "already resident" probe, so the TSR refuses to
   double-install.
 - `pofodetect.inc` - real-hardware detection (`is_pofo`), used to

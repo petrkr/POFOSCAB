@@ -14,7 +14,9 @@
 ;   0x8A  RMDIR     -> see rmdir.inc
 ;   0x8B  RENAME    -> see rename.inc
 ;   0x8C  COPY      -> see copy.inc
-;   0x81-0x85, 0x8D+ (reserved for future subcommands)
+;   0x8D  GETDATETIME -> see datetime.inc
+;   0x8E  SETDATETIME -> see datetime.inc
+;   0x81-0x85, 0x8F+ (reserved for future subcommands)
 ;
 ; HELLO response layout (fixed 12 bytes):
 ;   offset 0-3  magic "PFD1"
@@ -52,8 +54,8 @@
 ;                         of this writing, see list.inc/drives.inc/
 ;                         mkdir.inc/delete.inc/rmdir.inc/rename.inc/
 ;                         copy.inc
-;   bit 1  CAP_DATETIME - SETTIME/GETTIME supported (not yet
-;                         implemented - reserved for when they are)
+;   bit 1  CAP_DATETIME - GETDATETIME/SETDATETIME (0x8D/0x8E) supported,
+;                         see datetime.inc
 
 %include "version.inc"
 %include "build_id.inc"
@@ -66,7 +68,7 @@ hello_response:
         db      'PFD1'          ; magic
         dd      BUILD_ID        ; build id / dev snapshot marker
         db      VERSION
-        db      CAP_CORE        ; capabilities - see list.inc/drives.inc/mkdir.inc/delete.inc/rmdir.inc/rename.inc/copy.inc. CAP_DATETIME not set yet - SETTIME/GETTIME don't exist.
+        db      CAP_CORE | CAP_DATETIME ; capabilities - see list.inc/drives.inc/mkdir.inc/delete.inc/rmdir.inc/rename.inc/copy.inc/datetime.inc
         db      0x00, 0x00      ; reserved
 hello_response_len equ $ - hello_response
 

@@ -88,6 +88,7 @@ section .text
 %include "rmdir.inc"
 %include "rename.inc"
 %include "copy.inc"
+%include "datetime.inc"
 %include "critical_error.inc"
 %include "residentcheck.inc"
 
@@ -154,6 +155,10 @@ pftd_int61_handler:
         call    dispatch_rename
         mov     al, [cs:payload0]
         call    dispatch_copy
+        mov     al, [cs:payload0]
+        call    dispatch_getdatetime
+        mov     al, [cs:payload0]
+        call    dispatch_setdatetime
 
 .no_pending:
         pop     ds

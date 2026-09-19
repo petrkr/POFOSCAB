@@ -40,10 +40,21 @@ BASE = sys.argv[1]
 
 
 def send_raw(hexdata: str) -> str:
+    # /sendRaw's success response is JSON ({"ok":true,"response":"<hex>"}),
+    # not a bare hex string - changed on the client firmware side at some
+    # point after this script was first written. Handle both shapes so
+    # this keeps working regardless of which firmware build is live.
     data = urllib.parse.urlencode({"data": hexdata}).encode()
     req = urllib.request.Request(f"{BASE}/sendRaw", data=data, method="POST")
     with urllib.request.urlopen(req, timeout=20) as resp:
-        return resp.read().decode().strip()
+        body = resp.read().decode().strip()
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError:
+        return body
+    if isinstance(parsed, dict) and "response" in parsed:
+        return parsed["response"]
+    return body
 
 
 def status() -> dict:
@@ -60,6 +71,18 @@ def req(cmd: int, *paths: str) -> str:
     for p in paths:
         payload += path_bytes(p)
     return payload.hex()
+
+
+def pack_date(year: int, month: int, day: int) -> int:
+    return ((year - 1980) << 9) | (month << 5) | day
+
+
+def pack_time(hour: int, minute: int, second: int) -> int:
+    return (hour << 11) | (minute << 5) | (second // 2)
+
+
+def req_bin(cmd: int, payload: bytes) -> str:
+    return (bytes([cmd, 0x00, 0x70]) + payload).hex()
 
 
 results = []
@@ -127,6 +150,54 @@ def main():
     # cleanup - best effort, ignore failures
     send_raw(req(0x89, "C:\\RCOPY1.COM"))
     send_raw(req(0x89, "A:\\RCOPY2.COM"))
+
+    # GETDATETIME (0x8D): single-byte request, 4-byte packed date+time
+    # response, no status/errcode. Just confirm it returns 4 bytes and
+    # decodes to a plausible date (this repo has zero prior real-HW
+    # usage of AH=0x2A/0x2C - see STATUS.md).
+    r = send_raw("8d")
+    ok = len(r) == 8
+    results.append(("GETDATETIME basic", ok))
+    print(f"[{'PASS' if ok else 'FAIL'}] GETDATETIME basic: got {r!r}")
+    if ok:
+        raw = bytes.fromhex(r)
+        packed_date = raw[0] | (raw[1] << 8)
+        packed_time = raw[2] | (raw[3] << 8)
+        year = 1980 + (packed_date >> 9)
+        month = (packed_date >> 5) & 0x0F
+        day = packed_date & 0x1F
+        hour = packed_time >> 11
+        minute = (packed_time >> 5) & 0x3F
+        second = (packed_time & 0x1F) * 2
+        print(f"    decoded: {year:04d}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:{second:02d}")
+        plausible = 1980 <= year <= 2107 and 1 <= month <= 12 and 1 <= day <= 31 and hour <= 23 and minute <= 59
+        results.append(("GETDATETIME decodes to plausible values", plausible))
+        print(f"[{'PASS' if plausible else 'FAIL'}] GETDATETIME decodes to plausible values")
+
+    # SETDATETIME (0x8E) round-trip: set a known date/time, read it
+    # back via GETDATETIME, confirm it stuck.
+    set_date = pack_date(2026, 9, 19)
+    set_time = pack_time(14, 30, 0)
+    payload = bytes([set_date & 0xFF, set_date >> 8, set_time & 0xFF, set_time >> 8])
+    r = send_raw(req_bin(0x8E, payload))
+    check("SETDATETIME valid value", r, 0x20, 0)
+
+    r = send_raw("8d")
+    if len(r) == 8:
+        raw = bytes.fromhex(r)
+        got_date = raw[0] | (raw[1] << 8)
+        got_time_hour = (raw[2] | (raw[3] << 8)) >> 11
+        roundtrip_ok = got_date == set_date and got_time_hour == 14
+        results.append(("SETDATETIME round-trip", roundtrip_ok))
+        print(f"[{'PASS' if roundtrip_ok else 'FAIL'}] SETDATETIME round-trip: date={got_date:#06x} (expected {set_date:#06x}), hour={got_time_hour} (expected 14)")
+
+    # SETDATETIME with an out-of-range month (13): expect errcode=4,
+    # per RBIL's documented AL=0xFF failure mode - unverified on real
+    # DIP DOS until this test runs (see STATUS.md).
+    bad_date = pack_date(2026, 13, 1)
+    payload = bytes([bad_date & 0xFF, bad_date >> 8, 0x00, 0x00])
+    r = send_raw(req_bin(0x8E, payload))
+    check("SETDATETIME invalid month", r, 0x10, 4)
 
     print()
     passed = sum(1 for _, ok in results if ok)
