@@ -183,18 +183,22 @@ these DOS functions to compare against. See `STATUS.md` and
 
 ## Capabilities bitmask (HELLO response, offset 9)
 
+Grouped by category, not one bit per command - this protocol has never
+shipped a version with only some commands present (every command that
+exists has always been added together; the old 1-bit-per-command
+layout was a development convenience for the web client, not a real
+partial-support signal), so bits are spent on unrelated future command
+*families*, not individually reclaimable per-command distinctions that
+would never actually vary in practice. See `hello.inc`'s header for
+the full reasoning.
+
 | Bit | Constant | Meaning |
 |---|---|---|
-| 0 (`0x01`) | `CAP_LIST_EXT` | LIST extended (`0x86`) supported |
-| 1 (`0x02`) | `CAP_DRIVES` | DRIVES (`0x87`) supported |
-| 2 (`0x04`) | `CAP_MKDIR` | MKDIR (`0x88`) supported |
-| 3 (`0x08`) | `CAP_DELETE` | DELETE (`0x89`) supported |
-| 4 (`0x10`) | `CAP_RMDIR` | RMDIR (`0x8A`) supported |
-| 5 (`0x20`) | `CAP_RENAME` | RENAME (`0x8B`) supported |
-| 6 (`0x40`) | `CAP_COPY` | COPY (`0x8C`) supported |
+| 0 (`0x01`) | `CAP_CORE` | LIST extended/DRIVES/MKDIR/DELETE/RMDIR/RENAME/COPY (`0x86`-`0x8C`) all supported |
+| 1 (`0x02`) | `CAP_DATETIME` | SETTIME/GETTIME supported (not yet implemented) |
 
-Defined in `hello.inc`; currently all seven bits are always set
-(`CAP_LIST_EXT | CAP_DRIVES | CAP_MKDIR | CAP_DELETE | CAP_RMDIR | CAP_RENAME | CAP_COPY`).
+Defined in `hello.inc`; currently `CAP_CORE` is always set,
+`CAP_DATETIME` is not (SETTIME/GETTIME don't exist yet).
 
 ## Version / BUILD_ID
 
@@ -221,8 +225,11 @@ never a real release marker.
 1. Pick the next free code (`0x8D+` - `0x81`-`0x85` are reserved,
    unused so far; `0x88`/`0x89`/`0x8A`/`0x8B`/`0x8C` are taken by
    MKDIR/DELETE/RMDIR/RENAME/COPY).
-2. Give it its own capability bit in the HELLO response (offset 9),
-   same pattern as `CAP_LIST_EXT`/`CAP_DRIVES`.
+2. Decide whether it belongs to an existing capability group
+   (`CAP_CORE`) or needs a new bit for a new command family (see
+   `hello.inc`'s header for why bits are grouped, not one per
+   command) - don't add a new bit for a command that's just another
+   file operation.
 3. Implement `dispatch_<name>` in a new or existing `*.inc` file here,
    wire it into `PFTD.asm`'s command detection.
 4. Add a standalone DOSBox test tool in `tests/` (see

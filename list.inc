@@ -8,7 +8,7 @@
 ; changing the ROM's list dispatch: legacy list (6) keeps working
 ; unmodified for anything that only speaks the stock protocol - the
 ; client picks 0x86 over 6 based on the HELLO capabilities bit
-; (CAP_LIST_EXT below).
+; (CAP_CORE, see hello.inc).
 ;
 ; Request layout (identical prefix to the ROM's own list request):
 ; payload[0]=0x86, payload[1..2] unused (0x00, 0x70 - mirrors the ROM's
@@ -69,8 +69,9 @@
 ; with DS=CS, which DOS calls do not change out from under us (DS:DX is
 ; a call parameter, not something DOS repoints).
 
-; CAP_LIST_EXT (HELLO capabilities bit 0) is defined in hello.inc, not
-; here - see that file's capabilities bitmask comment for why.
+; This command's capability bit is CAP_CORE (defined in hello.inc,
+; shared with every other file-op command - see that file's
+; capabilities bitmask comment for why they're grouped together).
 
 LIST_CMD equ 0x86
 

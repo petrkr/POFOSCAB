@@ -33,31 +33,40 @@
 ; the command each bit describes) since this is the one place a client
 ; can discover them all at once, before knowing which other commands
 ; exist.
-;   bit 0  CAP_LIST_EXT - LIST extended (0x86, see list.inc) supported
-;   bit 1  CAP_DRIVES   - DRIVES (0x87, see drives.inc) supported
-;   bit 2  CAP_MKDIR    - MKDIR (0x88, see mkdir.inc) supported
-;   bit 3  CAP_DELETE   - DELETE (0x89, see delete.inc) supported
-;   bit 4  CAP_RMDIR    - RMDIR (0x8A, see rmdir.inc) supported
-;   bit 5  CAP_RENAME   - RENAME (0x8B, see rename.inc) supported
-;   bit 6  CAP_COPY     - COPY (0x8C, see copy.inc) supported
+;
+; Grouped by category, not one bit per command: this protocol has never
+; been released (no version has ever shipped with only some of these
+; bits set - every command that exists has always shipped together, as
+; a development convenience for the web client to hook into during
+; incremental buildout, not a real "partial support" signal), so there
+; is no compatibility reason to keep 1-bit-per-command granularity, and
+; every bit spent that way is one that can never be reclaimed once a
+; version genuinely ships. Group by category instead, leaving room for
+; unrelated future command families to get their own bit without
+; exhausting this single byte (see hello.inc's own "extended version"
+; escape at offset 8 for what happens if even that isn't enough).
+;
+;   bit 0  CAP_CORE     - LIST extended/DRIVES/MKDIR/DELETE/RMDIR/
+;                         RENAME/COPY (0x86-0x8C) all supported - the
+;                         complete file-op command set that exists as
+;                         of this writing, see list.inc/drives.inc/
+;                         mkdir.inc/delete.inc/rmdir.inc/rename.inc/
+;                         copy.inc
+;   bit 1  CAP_DATETIME - SETTIME/GETTIME supported (not yet
+;                         implemented - reserved for when they are)
 
 %include "version.inc"
 %include "build_id.inc"
 
 HELLO_CMD equ 0x80
-CAP_LIST_EXT equ 0x01
-CAP_DRIVES   equ 0x02
-CAP_MKDIR    equ 0x04
-CAP_DELETE   equ 0x08
-CAP_RMDIR    equ 0x10
-CAP_RENAME   equ 0x20
-CAP_COPY     equ 0x40
+CAP_CORE     equ 0x01
+CAP_DATETIME equ 0x02
 
 hello_response:
         db      'PFD1'          ; magic
         dd      BUILD_ID        ; build id / dev snapshot marker
         db      VERSION
-        db      CAP_LIST_EXT | CAP_DRIVES | CAP_MKDIR | CAP_DELETE | CAP_RMDIR | CAP_RENAME | CAP_COPY ; capabilities - see list.inc/drives.inc/mkdir.inc/delete.inc/rmdir.inc/rename.inc/copy.inc
+        db      CAP_CORE        ; capabilities - see list.inc/drives.inc/mkdir.inc/delete.inc/rmdir.inc/rename.inc/copy.inc. CAP_DATETIME not set yet - SETTIME/GETTIME don't exist.
         db      0x00, 0x00      ; reserved
 hello_response_len equ $ - hello_response
 
