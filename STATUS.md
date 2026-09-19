@@ -106,10 +106,14 @@ Partially verified on real hardware (build `0xFFFF0015`). Confirmed:
   content verified byte-for-byte identical to source via download and
   diff, not just size/existence. Source left untouched. Device stayed
   responsive.
+- Cross-drive copy (`C:\CPYTEST.TXT` -> `A:\CPYOUT.TXT`, 27 bytes) -
+  the actual point of this command over RENAME: `status=0x20,
+  errcode=0`. Destination created on `A:` with matching size and
+  byte-for-byte identical content (verified via download and diff).
+  Source left untouched on `C:`. Device stayed responsive.
 
 **Not yet verified - open items:**
 
-- Cross-drive copy (the actual point of this command over RENAME).
 - Copy onto an existing destination (overwrite behavior).
 - Copy from a nonexistent source (`errcode=1` expected).
 - Copy to a full or write-protected destination (disk-full short-write

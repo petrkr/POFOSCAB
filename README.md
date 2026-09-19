@@ -68,7 +68,7 @@ whole story.
   `PFTDN.COM` (see below), so the individual `tests/T*.COM` tools can
   be run against a live instance.
 - `tests/` - standalone DOSBox-only test tools, one per command
-  (`TDRIVES`, `TLISTEXT`, `TMKDIR`, `TDELETE`, plus a couple of
+  (`TDRIVES`, `TLISTEXT`, `TMKDIR`, `TDELETE`, `TCOPY`, plus a couple of
   isolated probes - `TMKDIRA`, `TUNLKDIR` - that call `int 0x21`
   directly, without PFTD, to characterize real-hardware DOS behavior
   in isolation). None of these `%include` anything from the driver;
