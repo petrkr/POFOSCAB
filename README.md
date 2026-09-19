@@ -57,9 +57,11 @@ whole story.
   refuse installing on anything that isn't an actual Portfolio.
 - `hexprint.inc` - install-time-only hex/decimal print helpers (banner
   output), never called from inside the resident hook.
-- `version.inc` - `VERSION` (wire format version) and `BUILD_ID` (dev
-  snapshot marker, bumped by hand during development; meant to be
-  replaced with a build-time git short hash for real releases).
+- `version.inc` - `VERSION` (wire format version), hand-maintained,
+  never touched by CI.
+- `build_id.inc` - `BUILD_ID`, a dev snapshot marker bumped by hand
+  locally; CI regenerates this file wholesale (not a patch) with the
+  commit's short git hash on every build - see the file's own header.
 - `loadtest.bat` - DOSBox loader: installs `tests/STUB61.COM` then
   `PFTDN.COM` (see below), so the individual `tests/T*.COM` tools can
   be run against a live instance.
@@ -83,6 +85,21 @@ nasm -f bin -dCHECK_POFO=0 PFTD.asm -o PFTDN.COM     # DOSBox / testing
 DOSBox's port `0x61` doesn't echo back like a real Portfolio's does, so
 the check would always fail there. Never ship a `CHECK_POFO=0` build to
 real hardware.
+
+## CI / Releases
+
+`.github/workflows/build.yml` builds `PFTD.COM` (real-hardware variant
+only, no `PFTDN.COM`/DOSBox variant yet, no automated tests yet) on
+every push to `master` and on `v*.*.*` tags. In both cases it
+regenerates `build_id.inc` from scratch with the commit's short git
+hash before assembling - so any published build's `BUILD_ID` (visible
+in the HELLO response, see `PROTOCOL.md`) always identifies the exact
+commit, never a hand-bumped dev marker. `VERSION` (`version.inc`) is
+untouched by CI. Master builds are uploaded as a build artifact
+(`PFTD-<shorthash>.zip`); tag builds additionally
+publish a GitHub Release with `PFTD-<tag>.zip` attached. The `PFTD.COM`
+file itself is always named the same inside the zip - only the zip's
+name identifies the build.
 
 Each `tests/T*.asm` assembles the same way, e.g.:
 

@@ -173,12 +173,19 @@ Defined in `hello.inc`; currently all six bits are always set
 
 ```asm
 VERSION   equ 1
+```
+
+`build_id.inc`:
+
+```asm
 BUILD_ID  equ 0xFFFF0010   ; dev snapshot marker
 ```
 
-`BUILD_ID` is meant to be replaced with a binary git short hash at
-build time (see comment in `version.inc`) - the value above is a dev
-placeholder, not a real release marker.
+`BUILD_ID` lives in its own file (`build_id.inc`) because CI
+regenerates it wholesale on every build (see that file's header and
+`.github/workflows/build.yml`) with the commit's short git hash - the
+value committed in the repo is only a local dev snapshot placeholder,
+never a real release marker.
 
 ## Adding a new command
 
