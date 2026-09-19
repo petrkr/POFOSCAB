@@ -1,10 +1,10 @@
 # Portfolio ROM - File transfer Server: dispatch a TSR rozšíření
 
 Zdrojový kód, na který se tento dokument odkazuje (`*.inc`/`.asm`
-soubory zmíněné níže, např. `pofo-driver/hello.inc`), žije přímo v
-tomto repu (POFOSCAB), v jeho rootu - historické zmínky `pofo-driver/`
+soubory zmíněné níže, např. `pofo-driver/hello.inc`), žije v tomto
+repu (POFOSCAB) ve `src/pftd/` - historické zmínky `pofo-driver/`
 prefixu odkazují na to, jak byly tyto soubory organizované před
-přesunem do tohoto samostatného repa, ne na podadresář tady.
+přesunem do tohoto samostatného repa, ne na aktuální umístění.
 
 ## Cíl
 Najít, kde Server mód (System Setup -> File transfer -> Server) rozhoduje

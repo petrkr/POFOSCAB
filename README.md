@@ -34,40 +34,47 @@ whole story.
 
 ## Files
 
-- `PFTD.asm` - the TSR itself. Hooks `int 0x61`, detects PFTD-space
-  commands (`payload[0] >= 0x80`) alongside the stock ROM protocol
-  (`payload[0]` in `[2,6]`), and dispatches to the per-command `.inc`
-  files below.
-- `hello.inc` - HELLO (`0x80`): presence/capability discovery.
-- `list.inc` - LIST extended (`0x86`): directory listing with
+`src/pftd/` holds PFTD's source - as POFOSCAB grows to host more than
+one tool, each gets its own `src/<name>/` directory alongside it.
+
+- `src/pftd/PFTD.asm` - the TSR itself. Hooks `int 0x61`, detects
+  PFTD-space commands (`payload[0] >= 0x80`) alongside the stock ROM
+  protocol (`payload[0]` in `[2,6]`), and dispatches to the
+  per-command `.inc` files below.
+- `src/pftd/hello.inc` - HELLO (`0x80`): presence/capability discovery.
+- `src/pftd/list.inc` - LIST extended (`0x86`): directory listing with
   attributes/size/date/time, plus free/total drive space.
-- `drives.inc` - DRIVES (`0x87`): logical drive count.
-- `mkdir.inc` - MKDIR (`0x88`).
-- `delete.inc` - DELETE (`0x89`, files only - see `rmdir.inc` for
-  directories).
-- `rmdir.inc` - RMDIR (`0x8A`).
-- `rename.inc` - RENAME (`0x8B`): rename/move within the same drive.
-- `copy.inc` - COPY (`0x8C`): copy a file, source to destination,
-  works cross-drive (unlike RENAME) since it does a real data copy.
-- `datetime.inc` - GETDATETIME (`0x8D`)/SETDATETIME (`0x8E`): read/set
-  the Portfolio's system date and time together, packed DOS format
-  (same as LIST extended's per-file date/time).
-- `critical_error.inc` - resident `int 0x24` (DOS critical error)
-  handler, needed by any command that does real disk I/O (mkdir/
-  delete/rmdir/rename/copy) so a missing/write-protected disk doesn't
-  hang on "Abort, Retry, Ignore?". SETDATETIME uses it too,
+- `src/pftd/drives.inc` - DRIVES (`0x87`): logical drive count.
+- `src/pftd/mkdir.inc` - MKDIR (`0x88`).
+- `src/pftd/delete.inc` - DELETE (`0x89`, files only - see
+  `rmdir.inc` for directories).
+- `src/pftd/rmdir.inc` - RMDIR (`0x8A`).
+- `src/pftd/rename.inc` - RENAME (`0x8B`): rename/move within the same
+  drive.
+- `src/pftd/copy.inc` - COPY (`0x8C`): copy a file, source to
+  destination, works cross-drive (unlike RENAME) since it does a real
+  data copy.
+- `src/pftd/datetime.inc` - GETDATETIME (`0x8D`)/SETDATETIME (`0x8E`):
+  read/set the Portfolio's system date and time together, packed DOS
+  format (same as LIST extended's per-file date/time).
+- `src/pftd/critical_error.inc` - resident `int 0x24` (DOS critical
+  error) handler, needed by any command that does real disk I/O
+  (mkdir/delete/rmdir/rename/copy) so a missing/write-protected disk
+  doesn't hang on "Abort, Retry, Ignore?". SETDATETIME uses it too,
   defensively, though its DOS calls aren't expected to need it.
-- `residentcheck.inc` - "already resident" probe, so the TSR refuses to
-  double-install.
-- `pofodetect.inc` - real-hardware detection (`is_pofo`), used to
-  refuse installing on anything that isn't an actual Portfolio.
-- `hexprint.inc` - install-time-only hex/decimal print helpers (banner
-  output), never called from inside the resident hook.
-- `version.inc` - `VERSION` (wire format version), hand-maintained,
-  never touched by CI.
-- `build_id.inc` - `BUILD_ID`, a dev snapshot marker bumped by hand
-  locally; CI regenerates this file wholesale (not a patch) with the
-  commit's short git hash on every build - see the file's own header.
+- `src/pftd/residentcheck.inc` - "already resident" probe, so the TSR
+  refuses to double-install.
+- `src/pftd/pofodetect.inc` - real-hardware detection (`is_pofo`),
+  used to refuse installing on anything that isn't an actual
+  Portfolio.
+- `src/pftd/hexprint.inc` - install-time-only hex/decimal print
+  helpers (banner output), never called from inside the resident hook.
+- `src/pftd/version.inc` - `VERSION` (wire format version),
+  hand-maintained, never touched by CI.
+- `src/pftd/build_id.inc` - `BUILD_ID`, a dev snapshot marker bumped by
+  hand locally; CI regenerates this file wholesale (not a patch) with
+  the commit's short git hash on every build - see the file's own
+  header.
 - `loadtest.bat` - DOSBox loader: installs `tests/STUB61.COM` then
   `PFTDN.COM` (see below), so the individual `tests/T*.COM` tools can
   be run against a live instance.
@@ -88,6 +95,7 @@ whole story.
 ## Building
 
 ```
+cd src/pftd
 nasm -f bin PFTD.asm -o PFTD.COM                    # real Portfolio hardware
 nasm -f bin -dCHECK_POFO=0 PFTD.asm -o PFTDN.COM     # DOSBox / testing
 ```
@@ -99,9 +107,9 @@ real hardware.
 
 ## CI / Releases
 
-`.github/workflows/build.yml` builds `PFTD.COM` (real-hardware variant
-only, no `PFTDN.COM`/DOSBox variant yet, no automated tests yet) on
-every push to `master` and on `v*.*.*` tags. In both cases it
+`.github/workflows/build.yml` builds `src/pftd/PFTD.COM` (real-hardware
+variant only, no `PFTDN.COM`/DOSBox variant yet, no automated tests
+yet) on every push to `master` and on `v*.*.*` tags. In both cases it
 regenerates `build_id.inc` from scratch with the commit's short git
 hash before assembling - so any published build's `BUILD_ID` (visible
 in the HELLO response, see `PROTOCOL.md`) always identifies the exact
