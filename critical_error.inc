@@ -43,13 +43,6 @@
 ; re-enters DOS (see PFTD.asm's header) and the handler must be in place
 ; before any MKDIR/DELETE dispatch can safely run.
 
-critical_error_flag: resb 1   ; set by pftd_int24_handler when it fires,
-                               ; cleared by mkdir.inc/delete.inc before each
-                               ; attempt
-old24: resd 1                 ; saved original int 0x24 vector (AH=0x35 at
-                               ; install time) - kept for symmetry with
-                               ; old61, never chained to (see header above)
-
 ; pftd_int24_handler: real interrupt entry point (installed via DOS
 ; AH=0x25 INT=0x24), not a CALLed subroutine - must IRET, never RET.
 pftd_int24_handler:
@@ -61,3 +54,14 @@ pftd_int24_handler:
         mov     al, 0           ; AL=0 = Ignore, the only value guaranteed
                                  ; safe on DOS 2.x/DIP DOS
         iret
+
+section .bss
+
+critical_error_flag: resb 1   ; set by pftd_int24_handler when it fires,
+                               ; cleared by mkdir.inc/delete.inc before each
+                               ; attempt
+old24: resd 1                 ; saved original int 0x24 vector (AH=0x35 at
+                               ; install time) - kept for symmetry with
+                               ; old61, never chained to (see header above)
+
+section .text

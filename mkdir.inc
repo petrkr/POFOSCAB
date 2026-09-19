@@ -48,11 +48,6 @@
 
 MKDIR_CMD equ 0x88
 
-mkdir_response: resb 2    ; status(1B) + errcode(1B)
-mkdir_path:     resb 80   ; local copy of the request's ASCIIZ path, copied
-                           ; out of the foreign buffer before DS is switched
-                           ; back - same pattern as list.inc's list_pattern
-
 ; dispatch_mkdir: called from pftd_int61_handler with AL = payload[0] and
 ; CS=DS. Needs more than payload[0] out of the foreign receive buffer (the
 ; ASCIIZ path), via list_src_ds/list_src_si (set generically by
@@ -166,3 +161,12 @@ dispatch_mkdir:
         pop     ax
 .not_mkdir:
         ret
+
+section .bss
+
+mkdir_response: resb 2    ; status(1B) + errcode(1B)
+mkdir_path:     resb 80   ; local copy of the request's ASCIIZ path, copied
+                           ; out of the foreign buffer before DS is switched
+                           ; back - same pattern as list.inc's list_pattern
+
+section .text

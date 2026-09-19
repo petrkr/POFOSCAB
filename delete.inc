@@ -29,10 +29,6 @@
 
 DELETE_CMD equ 0x89
 
-delete_response: resb 2    ; status(1B) + errcode(1B)
-delete_path:      resb 80  ; local copy of the request's ASCIIZ path, same
-                            ; pattern as mkdir_path/list_pattern
-
 ; dispatch_delete: called from pftd_int61_handler with AL = payload[0] and
 ; CS=DS. Uses list_src_ds/list_src_si to pull the path out of the foreign
 ; buffer, same as dispatch_mkdir/dispatch_list.
@@ -129,3 +125,11 @@ dispatch_delete:
         pop     ax
 .not_delete:
         ret
+
+section .bss
+
+delete_response: resb 2    ; status(1B) + errcode(1B)
+delete_path:      resb 80  ; local copy of the request's ASCIIZ path, same
+                            ; pattern as mkdir_path/list_pattern
+
+section .text

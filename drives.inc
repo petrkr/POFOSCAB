@@ -55,8 +55,6 @@
 
 DRIVES_CMD equ 0x87
 
-drives_response: resb 1
-
 ; dispatch_drives: called from pftd_int61_handler with AL = payload[0]
 ; (no extra payload needed, same as dispatch_hello). Preserves
 ; AX/CX/DX/DS - see dispatch_hello's header comment for why (the
@@ -94,3 +92,9 @@ dispatch_drives:
         pop     ax
 .not_drives:
         ret
+
+section .bss
+
+drives_response: resb 1
+
+section .text

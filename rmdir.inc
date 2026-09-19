@@ -36,10 +36,6 @@
 
 RMDIR_CMD equ 0x8A
 
-rmdir_response: resb 2    ; status(1B) + errcode(1B)
-rmdir_path:     resb 80   ; local copy of the request's ASCIIZ path, same
-                           ; pattern as mkdir_path/delete_path
-
 ; dispatch_rmdir: called from pftd_int61_handler with AL = payload[0] and
 ; CS=DS. Uses list_src_ds/list_src_si to pull the path out of the foreign
 ; buffer, same as dispatch_mkdir/dispatch_delete/dispatch_list.
@@ -139,3 +135,11 @@ dispatch_rmdir:
         pop     ax
 .not_rmdir:
         ret
+
+section .bss
+
+rmdir_response: resb 2    ; status(1B) + errcode(1B)
+rmdir_path:     resb 80   ; local copy of the request's ASCIIZ path, same
+                           ; pattern as mkdir_path/delete_path
+
+section .text

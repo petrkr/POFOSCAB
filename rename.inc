@@ -40,13 +40,6 @@
 
 RENAME_CMD equ 0x8B
 
-rename_response:  resb 2    ; status(1B) + errcode(1B)
-rename_old_path:  resb 80   ; local copy of the request's first ASCIIZ
-                             ; path, same pattern as mkdir_path/delete_path
-rename_new_path:  resb 80   ; local copy of the request's second ASCIIZ
-                             ; path, immediately follows the first in the
-                             ; request buffer
-
 ; dispatch_rename: called from pftd_int61_handler with AL = payload[0] and
 ; CS=DS. Uses list_src_ds/list_src_si to pull both paths out of the
 ; foreign buffer, same as dispatch_mkdir/dispatch_delete/dispatch_rmdir/
@@ -165,3 +158,14 @@ dispatch_rename:
         pop     ax
 .not_rename:
         ret
+
+section .bss
+
+rename_response:  resb 2    ; status(1B) + errcode(1B)
+rename_old_path:  resb 80   ; local copy of the request's first ASCIIZ
+                             ; path, same pattern as mkdir_path/delete_path
+rename_new_path:  resb 80   ; local copy of the request's second ASCIIZ
+                             ; path, immediately follows the first in the
+                             ; request buffer
+
+section .text

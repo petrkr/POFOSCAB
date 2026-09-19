@@ -64,17 +64,6 @@
 COPY_CMD equ 0x8C
 COPY_BUFSIZE equ 512
 
-copy_response:   resb 2             ; status(1B) + errcode(1B)
-copy_src_path:   resb 80            ; same 80-byte convention as every
-copy_dst_path:   resb 80            ; other path buffer in this driver
-copy_buf:        resb COPY_BUFSIZE
-copy_src_handle: resw 1             ; spilled to memory, not kept in a
-copy_dst_handle: resw 1             ; register - bx is reused per
-                                     ; read/write call in the loop
-copy_src_attr:   resb 1             ; attribute byte read via Find First,
-                                     ; passed as CX to AH=0x3C so the
-                                     ; destination's attributes match
-
 ; dispatch_copy: called from pftd_int61_handler with AL = payload[0] and
 ; CS=DS. Uses list_src_ds/list_src_si to pull both paths out of the
 ; foreign buffer, same as dispatch_rename - but copies data, not just a
@@ -315,3 +304,18 @@ dispatch_copy:
         pop     ax
 .not_copy:
         ret
+
+section .bss
+
+copy_response:   resb 2             ; status(1B) + errcode(1B)
+copy_src_path:   resb 80            ; same 80-byte convention as every
+copy_dst_path:   resb 80            ; other path buffer in this driver
+copy_buf:        resb COPY_BUFSIZE
+copy_src_handle: resw 1             ; spilled to memory, not kept in a
+copy_dst_handle: resw 1             ; register - bx is reused per
+                                     ; read/write call in the loop
+copy_src_attr:   resb 1             ; attribute byte read via Find First,
+                                     ; passed as CX to AH=0x3C so the
+                                     ; destination's attributes match
+
+section .text

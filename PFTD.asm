@@ -60,6 +60,8 @@ ORG 0x100
 CHECK_POFO equ 1
 %endif
 
+section .text
+
 start:
         jmp     install
 
@@ -68,6 +70,15 @@ pending   db 0        ; 1 = a receive-block buffer is waiting to be inspected
 saved_ds  dw 0
 saved_dx  dw 0
 payload0  db 0        ; captured payload[0] byte, read out safely below
+
+; list_src_ds/list_src_si (used by every dispatch_* that needs more than
+; payload[0] out of the foreign receive buffer) and dta_buf (shared
+; Find First/Next DTA) now live in common.inc, alongside every other
+; *.inc's own buffers - see that file's header for why. %include it
+; before anything that uses those buffers.
+%include "common.inc"
+
+section .text
 
 %include "hello.inc"
 %include "list.inc"
@@ -80,13 +91,7 @@ payload0  db 0        ; captured payload[0] byte, read out safely below
 %include "critical_error.inc"
 %include "residentcheck.inc"
 
-; list_src_ds/list_src_si: copy of saved_ds/saved_dx taken at the same
-; time payload0 is read, handed to dispatch_list so it can pull more
-; than one byte (the ASCIIZ pattern) out of the foreign receive buffer -
-; see list.inc's dispatch_list header comment for why HELLO doesn't need
-; this but LIST does.
-list_src_ds dw 0
-list_src_si dw 0
+section .text
 
 ; --- new int 0x61 handler ---
 ; CPU already pushed FLAGS, CS, IP of the caller. We NEVER call the
@@ -166,7 +171,10 @@ pftd_int61_handler:
 .chain:
         jmp     far [cs:old61]
 
-resident_end:
+hook_end:
+; NOT the TSR residency boundary - see resident_end at the end of this
+; file for why. hook_end only marks where pftd_int61_handler's own code
+; stops; kept as a landmark for readers, not read by any AH=0x31 call.
 
 ; ---- installer ----
 %include "hexprint.inc"
@@ -280,9 +288,25 @@ install:
         int     0x21
 
         ; Terminate and Stay Resident (DOS AH=0x31): keep everything up to
-        ; resident_end (code + hook state) allocated after this program
-        ; exits, so pftd_int61_handler keeps working once the shell
-        ; prompt returns. Size is in 16-byte paragraphs, rounded up.
+        ; resident_end (code + hook state + every dispatch_*'s .bss
+        ; buffers) allocated after this program exits, so
+        ; pftd_int61_handler keeps working once the shell prompt
+        ; returns. Size is in 16-byte paragraphs, rounded up.
+        ;
+        ; resident_end is at the very end of this file (after every
+        ; %include), not right after hook_end above - NASM's -f bin
+        ; output merges ALL .text content from every included file
+        ; first, then ALL .bss content after that, regardless of
+        ; source order; the installer-only code below (hexprint.inc/
+        ; pofodetect.inc/install:) is .text too, so it unavoidably ends
+        ; up physically BEFORE every dispatch_*'s .bss buffers in the
+        ; assembled layout - there is no way to interleave "resident
+        ; code, then buffers, then installer" with plain section
+        ; directives. Reserving through the true end of the file means
+        ; the installer's own bytes stay resident too (wasted, a few
+        ; hundred bytes) - accepted as the simplest safe fix, still far
+        ; less memory than every buffer being duplicated as zero-bytes
+        ; in the .COM file the way section .text buffers used to be.
         mov     dx, resident_end
         add     dx, 0x0F
         mov     cl, 4
@@ -296,3 +320,12 @@ msg_installing    db ') - Installing...', 13, 10, '$'
 msg_installed     db 'Installed', 13, 10, '$'
 msg_not_portfolio db 'This is not an Atari Portfolio.', 13, 10, '$'
 msg_already_resident db 'PFTD is already resident.', 13, 10, '$'
+
+section .text
+; This must be the last .text content in the whole file (after every
+; %include above) - see the AH=0x31 call's comment for why. NASM's
+; -f bin format concatenates .text chunks in the order they were first
+; opened across the whole source, so this section .text/label pair,
+; being the last one reached, lands after all the installer code above
+; and immediately before every .bss buffer from every %include'd file.
+resident_end:

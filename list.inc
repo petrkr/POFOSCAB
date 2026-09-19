@@ -78,23 +78,11 @@ LIST_BUFSIZE equ 2048   ; fixed cap - see list.inc design notes; entries
                         ; beyond this are silently truncated (count
                         ; reflects only what fits)
 
-list_response:    resb LIST_BUFSIZE
-list_pattern:     resb 80         ; local copy of the request's ASCIIZ
-                                   ; pattern, copied out of the foreign
-                                   ; buffer before DS is switched back
-dta_buf:          resb 43         ; DOS Find First/Next DTA record size
-list_drive:       resb 1          ; drive number for AH=0x36, see
-                                   ; dispatch_list's drive-letter parse
-
-; Scratch cells for the free-space calculation in dispatch_list's
-; .done block - plain memory instead of registers because the 32x16
-; multiply sequence needs more live values than 8086 has registers for.
-list_di_save:        resw 1
-list_free_clusters:  resw 1
-list_total_clusters: resw 1
-list_cluster_bytes:  resd 1
-list_free_bytes:     resd 1
-list_total_bytes:    resd 1
+; dta_buf (shared with copy.inc) lives in common.inc - see that file's
+; header for why. Every other buffer below is private to this file and
+; declared in section .bss at the end of it (see the section .bss block
+; below dispatch_list) - kept as a forward reference here in comments
+; only; NASM doesn't need buffers declared before their first use.
 
 ; dispatch_list: called from pftd_int61_handler with AL = payload[0]
 ; and CS=DS (per pftd_int61_handler's "DS=CS again immediately"
@@ -320,3 +308,24 @@ dispatch_list:
         pop     ax
 .not_list:
         ret
+
+section .bss
+
+list_response:    resb LIST_BUFSIZE
+list_pattern:     resb 80         ; local copy of the request's ASCIIZ
+                                   ; pattern, copied out of the foreign
+                                   ; buffer before DS is switched back
+list_drive:       resb 1          ; drive number for AH=0x36, see
+                                   ; dispatch_list's drive-letter parse
+
+; Scratch cells for the free-space calculation in dispatch_list's
+; .done block - plain memory instead of registers because the 32x16
+; multiply sequence needs more live values than 8086 has registers for.
+list_di_save:        resw 1
+list_free_clusters:  resw 1
+list_total_clusters: resw 1
+list_cluster_bytes:  resd 1
+list_free_bytes:     resd 1
+list_total_bytes:    resd 1
+
+section .text
