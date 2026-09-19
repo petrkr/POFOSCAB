@@ -6,6 +6,31 @@ summary; the full test logs and reasoning behind each result are in
 format and mechanism, not verification state - that belongs here so it
 doesn't go stale in the code as testing progresses.
 
+## Fixed: TSR memory reservation didn't cover `.bss` buffers (build `0xFFFF0018`)
+
+When every command's buffers were moved from `.text`/`.data` into
+`section .bss` (to stop them being duplicated as zero-bytes in the
+`.COM` file - see `common.inc`'s header), `PFTD.asm`'s `AH=0x31`
+(Terminate and Stay Resident) call kept reserving memory only up to
+the end of `.text` content, not the true end of `.bss`. NASM's `-f
+bin` output concatenates all `.text` content from every `%include`d
+file first, then all `.bss` content after that - so `.bss` buffers
+(`dta_buf` through `old24`, ~1.2KB) landed entirely outside the
+memory DOS was told to protect. Any program run after installing
+PFTD could get allocated that same memory and silently corrupt
+`copy_buf`/`critical_error_flag`/etc., causing unrelated-looking
+hangs and "Memory full" errors well after the actual corruption.
+
+Confirmed on real hardware via A/B testing three builds (pre-`.bss`
+refactor, `.bss` refactor alone, and the fix) - the exact same command
+sequence survived on the pre-refactor build, hung the Portfolio on the
+unfixed `.bss`-refactor build, matching what was observed in normal
+use. Fixed by moving `resident_end` from a `.text` label (which only
+ever marked the end of the installer's own code) to a `.bss` label
+placed after every `%include` in `PFTD.asm` - see that file's `AH=0x31`
+comment for the full explanation. This is now self-correcting as
+buffers are added; no manual recalculation needed going forward.
+
 ## HELLO (`0x80`)
 
 Verified on real hardware. Response bytes checked via DOSBox

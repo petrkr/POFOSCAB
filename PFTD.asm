@@ -298,20 +298,24 @@ install:
         ; pftd_int61_handler keeps working once the shell prompt
         ; returns. Size is in 16-byte paragraphs, rounded up.
         ;
-        ; resident_end is at the very end of this file (after every
-        ; %include), not right after hook_end above - NASM's -f bin
-        ; output merges ALL .text content from every included file
-        ; first, then ALL .bss content after that, regardless of
-        ; source order; the installer-only code below (hexprint.inc/
-        ; pofodetect.inc/install:) is .text too, so it unavoidably ends
-        ; up physically BEFORE every dispatch_*'s .bss buffers in the
-        ; assembled layout - there is no way to interleave "resident
-        ; code, then buffers, then installer" with plain section
-        ; directives. Reserving through the true end of the file means
-        ; the installer's own bytes stay resident too (wasted, a few
-        ; hundred bytes) - accepted as the simplest safe fix, still far
-        ; less memory than every buffer being duplicated as zero-bytes
-        ; in the .COM file the way section .text buffers used to be.
+        ; resident_end is a .bss label (see the bottom of this file),
+        ; NOT the text_end .text landmark right after the installer -
+        ; a real-hardware bug (confirmed: DOS handed the memory right
+        ; after text_end to the next program it ran, silently
+        ; corrupting copy_buf/critical_error_flag/etc., causing
+        ; unrelated-looking hangs and "Memory full" errors later)
+        ; showed that .bss buffers are NOT included in "up to
+        ; text_end" the way earlier comments here assumed. NASM's
+        ; -f bin format concatenates ALL .text content from every
+        ; included file first, then ALL .bss content after that,
+        ; regardless of source order - so a label placed in .text right
+        ; after the installer only marks the end of .text, leaving
+        ; every dispatch_*'s .bss buffer (dta_buf through old24)
+        ; completely unreserved and fair game for the next DOS program.
+        ; Fix: resident_end is now a .bss label placed after every
+        ; %include, so it always lands after the true end of .bss
+        ; content - automatically correct as buffers are added, no
+        ; manual recalculation needed.
         mov     dx, resident_end
         add     dx, 0x0F
         mov     cl, 4
@@ -327,10 +331,19 @@ msg_not_portfolio db 'This is not an Atari Portfolio.', 13, 10, '$'
 msg_already_resident db 'PFTD is already resident.', 13, 10, '$'
 
 section .text
-; This must be the last .text content in the whole file (after every
-; %include above) - see the AH=0x31 call's comment for why. NASM's
-; -f bin format concatenates .text chunks in the order they were first
-; opened across the whole source, so this section .text/label pair,
-; being the last one reached, lands after all the installer code above
-; and immediately before every .bss buffer from every %include'd file.
+; Landmark only - marks the end of .text content, NOT the TSR
+; residency boundary. Kept for readers tracing where the installer's
+; own code ends; never read by any AH=0x31 call - see that call's
+; comment above for why a .text label here would be wrong.
+text_end:
+
+section .bss
+; This MUST be the last .bss declaration in the whole file (after
+; every %include above, each of which has its own section .bss block)
+; - NASM's -f bin format concatenates ALL .bss content from every
+; included file into one contiguous block, in the order those blocks
+; were opened; a label placed here, after all of them, always lands
+; at the true end of that block regardless of what buffers exist or
+; get added later. This is what AH=0x31 actually reserves - see that
+; call's comment for the real-hardware bug this fixes.
 resident_end:
