@@ -45,14 +45,15 @@ jobs:
             echo "id=$(git rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Package
-        run: zip "PFTD-${{ steps.ident.outputs.id }}.zip" PFTD.COM
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: PFTD-${{ steps.ident.outputs.id }}
-          path: PFTD-${{ steps.ident.outputs.id }}.zip
+          path: PFTD.COM
+
+      - name: Package for release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: zip "PFTD-${{ steps.ident.outputs.id }}.zip" PFTD.COM
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')

@@ -95,11 +95,11 @@ regenerates `build_id.inc` from scratch with the commit's short git
 hash before assembling - so any published build's `BUILD_ID` (visible
 in the HELLO response, see `PROTOCOL.md`) always identifies the exact
 commit, never a hand-bumped dev marker. `VERSION` (`version.inc`) is
-untouched by CI. Master builds are uploaded as a build artifact
-(`PFTD-<shorthash>.zip`); tag builds additionally
-publish a GitHub Release with `PFTD-<tag>.zip` attached. The `PFTD.COM`
-file itself is always named the same inside the zip - only the zip's
-name identifies the build.
+untouched by CI. Master builds are uploaded as a build artifact named
+`PFTD-<shorthash>` (containing plain `PFTD.COM`); tag builds
+additionally publish a GitHub Release with `PFTD-<tag>.zip` attached -
+only the release asset is zipped, since Actions artifacts are already
+downloaded as a zip by GitHub itself.
 
 Each `tests/T*.asm` assembles the same way, e.g.:
 
