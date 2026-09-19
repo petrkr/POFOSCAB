@@ -82,16 +82,45 @@ the actual request length - see `ROM_RESEARCH_NOTES.md`). Confirmed:
 - Move across directories on the same drive: success (`AH=0x56` works
   as a cross-directory move, not just same-directory rename).
 - Nonexistent source: `errcode=1` (not found).
+- Cross-drive rename (`C:\XTEST` -> `A:\XTEST`, build `6B635F18`):
+  `errcode=4` (access denied) - confirms the existing mapping in
+  `rename.inc` (DOS error 5 or 17, both folded into errcode 4).
+  Confirmed on both a directory and a file (`C:\XTEST.TXT` ->
+  `A:\XTEST.TXT`) - same result either way. Source was left untouched
+  on `C:` in both cases, device stayed responsive - no critical error
+  on this path.
 
 **Not yet verified - open items:**
 
-- Cross-drive rename (`C:` -> `D:`): expected to fail, exact DOS 2.x
-  error code unknown. The `errcode=17` ("not same device") mapping in
-  `rename.inc` is an unverified guess.
 - Rename onto an existing destination: `errcode=4` expected by analogy
   with MKDIR/RMDIR, not confirmed for `AH=0x56` specifically.
 - No-media / write-protected media during rename: expected to raise a
   critical error by analogy with MKDIR/DELETE/RMDIR, not confirmed.
+
+## COPY (`0x8C`)
+
+Partially verified on real hardware (build `0xFFFF0015`). Confirmed:
+
+- Same-drive copy (`C:\CPYTEST.TXT` -> `C:\CPYOUT.TXT`, 27 bytes):
+  `status=0x20, errcode=0`. Destination created with matching size;
+  content verified byte-for-byte identical to source via download and
+  diff, not just size/existence. Source left untouched. Device stayed
+  responsive.
+
+**Not yet verified - open items:**
+
+- Cross-drive copy (the actual point of this command over RENAME).
+- Copy onto an existing destination (overwrite behavior).
+- Copy from a nonexistent source (`errcode=1` expected).
+- Copy to a full or write-protected destination (disk-full short-write
+  detection and the partial-destination cleanup-on-failure path -
+  the highest-risk new logic in this command, no analogue elsewhere
+  in the codebase).
+- A file larger than `COPY_BUFSIZE` (512 bytes), to confirm the
+  read/write loop actually iterates more than once.
+- Destination attribute preservation (read-only/hidden/system byte
+  copied from source via Find First) - not yet checked against actual
+  DOS attribute output.
 
 ## Known dead ends / non-issues
 

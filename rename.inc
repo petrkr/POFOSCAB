@@ -21,10 +21,9 @@
 ; rmdir.inc's:
 ;   offset 0  status  (0x20 = ok, 0x10 = error)
 ;   offset 1  errcode (0 on success; on failure: 1=not found, 4=access
-;                       denied (also covers "destination already exists" -
-;                       DOS 2.x's AH=0x56 has no separate code for this on
-;                       related calls per this project's established
-;                       findings, unverified for AH=0x56 specifically),
+;                       denied (also covers "destination already exists"
+;                       and cross-drive rename - DOS 2.x's AH=0x56 has
+;                       no separate code for either),
 ;                       0xFF=critical error fired - see PROTOCOL.md's
 ;                       response status/errcode convention section, shared
 ;                       with mkdir.inc/delete.inc/rmdir.inc.)

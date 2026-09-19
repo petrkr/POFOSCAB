@@ -105,9 +105,10 @@ exists" (confirmed on real hardware, see `ROM_RESEARCH_NOTES.md`).
 
 Rename or move a file/directory on the Portfolio (`int 0x21 AH=0x56`).
 Works as a move within the same drive (DOS rename is a directory-entry
-rewrite, not a data copy) but NOT across drives - PFTD does not implement
-cross-drive move (that would need a copy+delete sequence at the client
-level, not a single DOS call).
+rewrite, not a data copy) but NOT across drives - confirmed on real
+hardware (`errcode=4`, both for a file and a directory; see
+`STATUS.md`). For a cross-drive move, use COPY (`0x8C`) followed by
+DELETE/RMDIR.
 
 Request: `0x8B, 0x00, 0x70` + TWO consecutive ASCIIZ strings (old path,
 then new path, new path immediately following old path's NUL). Response
@@ -115,13 +116,36 @@ then new path, new path immediately following old path's NUL). Response
 
 - Atari: `rename.inc` (`RENAME_CMD`, `dispatch_rename`).
 
-### Response status/errcode convention (MKDIR/DELETE/RMDIR/RENAME)
+### COPY (`0x8C`)
 
-MKDIR, DELETE, RMDIR and RENAME are the first PFTD commands that can genuinely fail
-(bad path, already exists, disk full, no media, write-protected), and the
-first that perform real disk I/O from inside the `int 0x61` dispatch hook -
-which
-requires a resident `int 0x24` (DOS critical error) handler
+Copy a file on the Portfolio, source to destination (`int 0x21
+AH=0x3D/0x3C/0x3F/0x40/0x3E` - Open/Create/Read/Write/Close). Files
+only - no directory recursion. Unlike RENAME, works cross-drive since
+it performs a real read/write data copy, not a directory-entry
+rewrite. The destination is always overwritten if it exists (no "fail
+if exists" mode - matches DOS's own `COPY` command); its DOS attribute
+byte is set to match the source's. If the copy fails partway (disk
+full, media pulled, critical error), the partially-written destination
+file is deleted before responding.
+
+Request: `0x8C, 0x00, 0x70` + TWO consecutive ASCIIZ strings (source
+path, then destination path, destination immediately following
+source's NUL) - identical shape to RENAME's request. Response (fixed 2
+bytes): see "Response status/errcode convention" below.
+
+No progress reporting - `dispatch_copy` runs the entire copy loop
+synchronously and sends exactly one response at the end, same as every
+other PFTD command (see `copy.inc`'s header for why intermediate
+progress packets are out of scope for now).
+
+- Atari: `copy.inc` (`COPY_CMD`, `dispatch_copy`).
+
+### Response status/errcode convention (MKDIR/DELETE/RMDIR/RENAME/COPY)
+
+MKDIR, DELETE, RMDIR, RENAME and COPY are the PFTD commands that can
+genuinely fail (bad path, already exists, disk full, no media,
+write-protected), and perform real disk I/O from inside the `int 0x61`
+dispatch hook - which requires a resident `int 0x24` (DOS critical error) handler
 (`critical_error.inc`) to avoid blocking on "Abort, Retry,
 Ignore?" on a drive with no media (see `ROM_RESEARCH_NOTES.md`'s DIP DOS
 critical-error findings from DRIVES development).
@@ -135,11 +159,11 @@ Response is always exactly 2 bytes:
 
 | errcode | Meaning | Used by |
 |---|---|---|
-| `1` | file/path not found | MKDIR, DELETE, RMDIR, RENAME |
+| `1` | file/path not found | MKDIR, DELETE, RMDIR, RENAME, COPY |
 | `2` | already exists (reserved - see note below, not currently reachable) | MKDIR only |
-| `3` | disk full | MKDIR |
-| `4` | access denied (write-protected, read-only, or DOS 2.x's coarse catch-all - also covers "already exists" (MKDIR), "not empty" (RMDIR), "destination exists"/"cross-drive" (RENAME), confirmed on real hardware for MKDIR/RMDIR, assumed by analogy for RENAME) | MKDIR, DELETE, RMDIR, RENAME |
-| `0xFF` | critical error fired (`int 0x24` Ignore path taken) - `AX` not trustworthy, cause unknown | MKDIR, DELETE, RMDIR, RENAME |
+| `3` | disk full | MKDIR, COPY (also covers a short write - see `copy.inc`) |
+| `4` | access denied (write-protected, read-only, or DOS 2.x's coarse catch-all - also covers "already exists" (MKDIR), "not empty" (RMDIR), "destination exists"/"cross-drive" (RENAME, confirmed on real hardware), too-many-open-files (COPY)) | MKDIR, DELETE, RMDIR, RENAME, COPY |
+| `0xFF` | critical error fired (`int 0x24` Ignore path taken) - `AX` not trustworthy, cause unknown | MKDIR, DELETE, RMDIR, RENAME, COPY |
 
 **Confirmed on real hardware** (see `ROM_RESEARCH_NOTES.md`'s MKDIR/DELETE
 test results): DOS 2.x/DIP DOS's `AH=0x39` returns the same code (5, access
@@ -148,10 +172,14 @@ no distinct code exists on this DOS version. Errcode `2` is therefore not
 currently produced by `mkdir.inc`; it remains reserved in this enum in case
 a future DOS version or code path needs it, not because it's expected soon.
 `AH=0x3A` (RMDIR)'s "not empty" case is assumed to behave the same way
-(access denied, errcode `4`) by analogy, not separately confirmed. RENAME
-(`AH=0x56`) is entirely untested on real hardware - its error mapping in
-`rename.inc` (including a guess at DOS error code 17, "not same device",
-for cross-drive rename attempts) is unverified.
+(access denied, errcode `4`) by analogy, not separately confirmed.
+RENAME's cross-drive behavior (`errcode=4`) is confirmed on real
+hardware; other RENAME scenarios remain unverified - see `STATUS.md`.
+
+COPY's `AH=0x3D/0x3C/0x3F/0x40` error mapping in `copy.inc` is
+entirely unverified on real hardware - this repo has no prior usage of
+these DOS functions to compare against. See `STATUS.md` and
+`copy.inc`'s header for what's confirmed vs. still open.
 
 ## Capabilities bitmask (HELLO response, offset 9)
 
@@ -163,9 +191,10 @@ for cross-drive rename attempts) is unverified.
 | 3 (`0x08`) | `CAP_DELETE` | DELETE (`0x89`) supported |
 | 4 (`0x10`) | `CAP_RMDIR` | RMDIR (`0x8A`) supported |
 | 5 (`0x20`) | `CAP_RENAME` | RENAME (`0x8B`) supported |
+| 6 (`0x40`) | `CAP_COPY` | COPY (`0x8C`) supported |
 
-Defined in `hello.inc`; currently all six bits are always set
-(`CAP_LIST_EXT | CAP_DRIVES | CAP_MKDIR | CAP_DELETE | CAP_RMDIR | CAP_RENAME`).
+Defined in `hello.inc`; currently all seven bits are always set
+(`CAP_LIST_EXT | CAP_DRIVES | CAP_MKDIR | CAP_DELETE | CAP_RMDIR | CAP_RENAME | CAP_COPY`).
 
 ## Version / BUILD_ID
 
@@ -189,9 +218,9 @@ never a real release marker.
 
 ## Adding a new command
 
-1. Pick the next free code (`0x8C+` - `0x81`-`0x85` are reserved,
-   unused so far; `0x88`/`0x89`/`0x8A`/`0x8B` are taken by
-   MKDIR/DELETE/RMDIR/RENAME).
+1. Pick the next free code (`0x8D+` - `0x81`-`0x85` are reserved,
+   unused so far; `0x88`/`0x89`/`0x8A`/`0x8B`/`0x8C` are taken by
+   MKDIR/DELETE/RMDIR/RENAME/COPY).
 2. Give it its own capability bit in the HELLO response (offset 9),
    same pattern as `CAP_LIST_EXT`/`CAP_DRIVES`.
 3. Implement `dispatch_<name>` in a new or existing `*.inc` file here,
@@ -204,6 +233,6 @@ never a real release marker.
 
 ## Reserved / not yet implemented
 
-- `0x81`-`0x85`, `0x8C+`: reserved, unused.
+- `0x81`-`0x85`, `0x8D+`: reserved, unused.
 - Planned ideas (SETTIME via `AH=0x2D`/`AH=0x2B`): rationale and
   DOS-version caveats are in `ROM_RESEARCH_NOTES.md`.

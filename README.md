@@ -47,10 +47,12 @@ whole story.
   directories).
 - `rmdir.inc` - RMDIR (`0x8A`).
 - `rename.inc` - RENAME (`0x8B`): rename/move within the same drive.
+- `copy.inc` - COPY (`0x8C`): copy a file, source to destination,
+  works cross-drive (unlike RENAME) since it does a real data copy.
 - `critical_error.inc` - resident `int 0x24` (DOS critical error)
   handler, needed by any command that does real disk I/O (mkdir/
-  delete/rmdir/rename) so a missing/write-protected disk doesn't hang
-  on "Abort, Retry, Ignore?".
+  delete/rmdir/rename/copy) so a missing/write-protected disk doesn't
+  hang on "Abort, Retry, Ignore?".
 - `residentcheck.inc` - "already resident" probe, so the TSR refuses to
   double-install.
 - `pofodetect.inc` - real-hardware detection (`is_pofo`), used to

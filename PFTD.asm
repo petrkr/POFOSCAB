@@ -76,6 +76,7 @@ payload0  db 0        ; captured payload[0] byte, read out safely below
 %include "delete.inc"
 %include "rmdir.inc"
 %include "rename.inc"
+%include "copy.inc"
 %include "critical_error.inc"
 %include "residentcheck.inc"
 
@@ -146,6 +147,8 @@ pftd_int61_handler:
         call    dispatch_rmdir
         mov     al, [cs:payload0]
         call    dispatch_rename
+        mov     al, [cs:payload0]
+        call    dispatch_copy
 
 .no_pending:
         pop     ds

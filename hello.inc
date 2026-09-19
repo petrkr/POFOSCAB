@@ -13,7 +13,8 @@
 ;   0x89  DELETE    -> see delete.inc
 ;   0x8A  RMDIR     -> see rmdir.inc
 ;   0x8B  RENAME    -> see rename.inc
-;   0x81-0x85, 0x8C+ (reserved for future subcommands)
+;   0x8C  COPY      -> see copy.inc
+;   0x81-0x85, 0x8D+ (reserved for future subcommands)
 ;
 ; HELLO response layout (fixed 12 bytes):
 ;   offset 0-3  magic "PFD1"
@@ -38,6 +39,7 @@
 ;   bit 3  CAP_DELETE   - DELETE (0x89, see delete.inc) supported
 ;   bit 4  CAP_RMDIR    - RMDIR (0x8A, see rmdir.inc) supported
 ;   bit 5  CAP_RENAME   - RENAME (0x8B, see rename.inc) supported
+;   bit 6  CAP_COPY     - COPY (0x8C, see copy.inc) supported
 
 %include "version.inc"
 %include "build_id.inc"
@@ -49,12 +51,13 @@ CAP_MKDIR    equ 0x04
 CAP_DELETE   equ 0x08
 CAP_RMDIR    equ 0x10
 CAP_RENAME   equ 0x20
+CAP_COPY     equ 0x40
 
 hello_response:
         db      'PFD1'          ; magic
         dd      BUILD_ID        ; build id / dev snapshot marker
         db      VERSION
-        db      CAP_LIST_EXT | CAP_DRIVES | CAP_MKDIR | CAP_DELETE | CAP_RMDIR | CAP_RENAME ; capabilities - see list.inc/drives.inc/mkdir.inc/delete.inc/rmdir.inc/rename.inc
+        db      CAP_LIST_EXT | CAP_DRIVES | CAP_MKDIR | CAP_DELETE | CAP_RMDIR | CAP_RENAME | CAP_COPY ; capabilities - see list.inc/drives.inc/mkdir.inc/delete.inc/rmdir.inc/rename.inc/copy.inc
         db      0x00, 0x00      ; reserved
 hello_response_len equ $ - hello_response
 
