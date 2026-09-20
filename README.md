@@ -75,73 +75,31 @@ one tool, each gets its own `src/<name>/` directory alongside it.
   hand locally; CI regenerates this file wholesale (not a patch) with
   the commit's short git hash on every build - see the file's own
   header.
-- `loadtest.bat` - DOSBox loader: installs `tests/STUB61.COM` then
-  `PFTDN.COM` (see below), so the individual `tests/T*.COM` tools can
-  be run against a live instance.
-- `tests/` - standalone DOSBox-only test tools, one per command
-  (`TDRIVES`, `TLISTEXT`, `TMKDIR`, `TDELETE`, `TCOPY`, plus a couple of
-  isolated probes - `TMKDIRA`, `TUNLKDIR` - that call `int 0x21`
-  directly, without PFTD, to characterize real-hardware DOS behavior
-  in isolation). None of these `%include` anything from the driver;
-  each is fully self-contained. `STUB61.asm` is a minimal stand-in
-  `int 0x61` handler PFTD's chain can safely jump to under DOSBox
-  (which has no real ROM handler there).
-- `tests/regression_test.py` - the one tool in `tests/` that talks to
-  real hardware instead of DOSBox: a fast smoke test over a live
-  client's `/sendRaw` debug endpoint, covering every command's
-  happy-path shape. Meant to be run after flashing a new build, before
-  anything more targeted - see the script's own header.
+- `tests/regression_test.py` - a fast smoke test over a live client's
+  `/sendRaw` debug endpoint, covering every command's happy-path
+  shape. Meant to be run after flashing a new build, before anything
+  more targeted - see the script's own header.
 
 ## Building
 
 ```
 cd src/pftd
-nasm -f bin PFTD.asm -o PFTD.COM                    # real Portfolio hardware
-nasm -f bin -dCHECK_POFO=0 PFTD.asm -o PFTDN.COM     # DOSBox / testing
+nasm -f bin PFTD.asm -o PFTD.COM
 ```
-
-`CHECK_POFO=0` skips the hardware detection in `pofodetect.inc` -
-DOSBox's port `0x61` doesn't echo back like a real Portfolio's does, so
-the check would always fail there. Never ship a `CHECK_POFO=0` build to
-real hardware.
 
 ## CI / Releases
 
-`.github/workflows/build.yml` builds `src/pftd/PFTD.COM` (real-hardware
-variant only, no `PFTDN.COM`/DOSBox variant yet, no automated tests
-yet) on every push to `master` and on `v*.*.*` tags. In both cases it
-regenerates `build_id.inc` from scratch with the commit's short git
-hash before assembling - so any published build's `BUILD_ID` (visible
-in the HELLO response, see `PROTOCOL.md`) always identifies the exact
-commit, never a hand-bumped dev marker. `VERSION` (`version.inc`) is
-untouched by CI. Master builds are uploaded as a build artifact named
-`PFTD-<shorthash>` (containing plain `PFTD.COM`); tag builds
-additionally publish a GitHub Release with `PFTD-<tag>.zip` attached -
-only the release asset is zipped, since Actions artifacts are already
-downloaded as a zip by GitHub itself.
-
-Each `tests/T*.asm` assembles the same way, e.g.:
-
-```
-nasm -f bin tests/TDRIVES.asm -o tests/TDRIVES.COM
-```
-
-## DOSBox test workflow
-
-```
-STUB61          <- tests/STUB61.COM, installs a transmit-logging int 0x61 stub
-PFTDN           <- the -dCHECK_POFO=0 build
-TDRIVES         <- or any other tests/T*.COM, exercises one command's dispatch
-```
-
-`loadtest.bat` runs the first two steps. This proves dispatch plumbing
-works (no hang/crash, response bytes visible via STUB61's log) - it
-does **not** validate real DIP DOS behavior (critical errors, exact DOS
-error codes, media-access quirks). Everything here has repeatedly
-turned out to diverge from what DOSBox alone would suggest; real
-Portfolio hardware testing is required before trusting any of it,
-particularly anything touching `int 0x21` disk I/O (`AH=0x39/0x3A/0x41/
-0x56`) or RBIL-documented DOS function contracts.
+`.github/workflows/build.yml` builds `src/pftd/PFTD.COM` (no automated
+tests yet) on every push to `master` and on `v*.*.*` tags. In both
+cases it regenerates `build_id.inc` from scratch with the commit's
+short git hash before assembling - so any published build's `BUILD_ID`
+(visible in the HELLO response, see `PROTOCOL.md`) always identifies
+the exact commit, never a hand-bumped dev marker. `VERSION`
+(`version.inc`) is untouched by CI. Master builds are uploaded as a
+build artifact named `PFTD-<shorthash>` (containing plain `PFTD.COM`);
+tag builds additionally publish a GitHub Release with
+`PFTD-<tag>.zip` attached - only the release asset is zipped, since
+Actions artifacts are already downloaded as a zip by GitHub itself.
 
 ## Wire protocol
 
@@ -170,11 +128,9 @@ implementation choices are based on.
    wire it into `PFTD.asm`'s command detection (`%include` plus the
    `mov al, [cs:payload0]` / `call dispatch_<name>` pair in
    `pftd_int61_handler`).
-5. Add a standalone DOSBox test tool in `tests/` (see `TLISTEXT.asm`/
-   `TDRIVES.asm` for the pattern) and verify on real hardware before
-   trusting any RBIL-documented DOS function contract - DIP DOS
-   diverges from PC MS-DOS behavior in ways DOSBox won't reveal (see
-   `ROM_RESEARCH_NOTES.md`'s DIP DOS critical error section).
+5. Verify on real hardware before trusting any RBIL-documented DOS
+   function contract - DIP DOS diverges from PC MS-DOS behavior in
+   ways that are easy to miss otherwise (see `ROM_RESEARCH_NOTES.md`'s
+   DIP DOS critical error section).
 6. Add checks to `tests/regression_test.py` covering the new command's
-   happy path, so future changes get a fast real-hardware regression
-   check.
+   happy path, so future changes get a fast regression check.
