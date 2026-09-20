@@ -44,21 +44,10 @@
 ; Usage:
 ;   PFTD                 <- install (stays resident)
 ;
-; Assemble (real Portfolio):  nasm -f bin PFTD.asm -o PFTD.COM
-; Assemble (DOSBox/testing):  nasm -f bin -dCHECK_POFO=0 PFTD.asm -o PFTD.COM
-;   (skips the is_pofo hardware check - DOSBox's port 0x61 doesn't echo
-;   back 0x61 like a real Portfolio does, so the check would always fail
-;   there. Never ship a CHECK_POFO=0 build to real hardware.)
+; Assemble:  nasm -f bin PFTD.asm -o PFTD.COM
 
 CPU 8086
 ORG 0x100
-
-; Set to 0 to skip the is_pofo hardware check at install time (see
-; pofodetect.inc) - useful for testing in DOSBox or other emulators that
-; don't echo port 0x61 back as 0x61. Leave at 1 for real builds.
-%ifndef CHECK_POFO
-CHECK_POFO equ 1
-%endif
 
 section .text
 
@@ -186,7 +175,6 @@ hook_end:
 %include "pofodetect.inc"
 
 install:
-%if CHECK_POFO
         ; Refuse to install on anything that isn't a real Atari Portfolio
         ; - see pofodetect.inc for the port 0x61 probe this relies on.
         call    is_pofo
@@ -197,7 +185,6 @@ install:
         int     0x21
         mov     ax, 0x4c01
         int     0x21
-%endif
 
 .is_portfolio:
         ; Refuse to double-install: ask any already-resident PFTD hook
