@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-# regression_test.py - live-hardware smoke test for PFTD, run over an
-# ESP client's /sendRaw debug endpoint (POST, form param "data" = hex
-# string, see the client firmware's handleSendRaw).
-#
-# Unlike every other tool in tests/ (DOSBox-only, run T*.COM inside an
-# emulator with no real Portfolio attached), this one talks to a real
-# Portfolio over a live cable, through a running client's HTTP API - it
-# is meant to be run from a shell after flashing a new PFTD.COM build,
-# as a fast regression check across every command before doing anything
-# more targeted by hand.
+# regression_test.py - end-to-end smoke test for PFTD, run over a
+# client's /sendRaw debug endpoint (POST, form param "data" = hex
+# string). Talks to a real Portfolio over a live Smart Cable (ESP32
+# client, see PortfolioESPlink's handleSendRaw) or to an emulated one
+# (MAME's pofo_bridge, via mame_bridge.py - see run_mame_regression.sh)
+# through the same HTTP API - it is meant to be run after flashing a
+# new PFTD.COM build, or after rebuilding the MAME fork, as a fast
+# regression check across every command before doing anything more
+# targeted by hand.
 #
 # Deliberately uses /sendRaw (raw wire-protocol bytes) instead of the
 # client's higher-level per-command endpoints (/mkdirAtari etc.):
@@ -85,6 +84,29 @@ def req_bin(cmd: int, payload: bytes) -> str:
     return (bytes([cmd, 0x00, 0x70]) + payload).hex()
 
 
+# ROM-native transmit (0x03, upload)/receive (0x02, download) live in
+# mame_bridge.py (MameLink.upload_file/download_file) - they need
+# several send_block()-without-receive calls in a row (the ROM only
+# replies once, after the LAST data chunk), which /sendRaw's
+# send+receive-pair-per-call shape can't express. Exposed here over
+# /uploadFile and /downloadFile.
+
+
+def upload_file(path: str, data: bytes) -> bool:
+    body = urllib.parse.urlencode({"path": path, "data": data.hex()}).encode()
+    req = urllib.request.Request(f"{BASE}/uploadFile", data=body, method="POST")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode())["ok"]
+
+
+def download_file(path: str) -> bytes | None:
+    body = urllib.parse.urlencode({"path": path}).encode()
+    req = urllib.request.Request(f"{BASE}/downloadFile", data=body, method="POST")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        parsed = json.loads(resp.read().decode())
+    return bytes.fromhex(parsed["data"]) if parsed["ok"] else None
+
+
 results = []
 
 
@@ -137,19 +159,33 @@ def main():
     r = send_raw(req(0x8A, "C:\\RTEST2"))
     check("RMDIR cleanup", r, 0x20, 0)
 
-    # COPY (0x8C): copies an existing file (PFTD.COM, always present
-    # after a fresh install) same-drive and cross-drive, plus a
-    # nonexistent-source check
-    r = send_raw(req(0x8C, "C:\\PFTD.COM", "C:\\RCOPY1.COM"))
+    # Upload/download (ROM-native 0x03/0x02): create our own source
+    # file rather than assuming PFTD.COM or anything else already
+    # exists on the card - this test must not depend on card contents
+    # it didn't create itself.
+    test_content = b"POFOSCAB REGRESSION TEST FILE\r\n"
+    ok = upload_file("C:\\RSRC.TXT", test_content)
+    results.append(("UPLOAD test source file", ok))
+    print(f"[{'PASS' if ok else 'FAIL'}] UPLOAD test source file")
+
+    downloaded = download_file("C:\\RSRC.TXT")
+    roundtrip_ok = downloaded == test_content
+    results.append(("DOWNLOAD round-trip matches upload", roundtrip_ok))
+    print(f"[{'PASS' if roundtrip_ok else 'FAIL'}] DOWNLOAD round-trip matches upload: got {downloaded!r}")
+
+    # COPY (0x8C): copies our own uploaded file same-drive and
+    # cross-drive, plus a nonexistent-source check
+    r = send_raw(req(0x8C, "C:\\RSRC.TXT", "C:\\RCOPY1.TXT"))
     check("COPY same-drive", r, 0x20, 0)
-    r = send_raw(req(0x8C, "C:\\PFTD.COM", "A:\\RCOPY2.COM"))
+    r = send_raw(req(0x8C, "C:\\RSRC.TXT", "A:\\RCOPY2.TXT"))
     check("COPY cross-drive", r, 0x20, 0)
-    r = send_raw(req(0x8C, "C:\\RNOTEXIST.TXT", "C:\\RCOPY3.COM"))
+    r = send_raw(req(0x8C, "C:\\RNOTEXIST.TXT", "C:\\RCOPY3.TXT"))
     check("COPY nonexistent source", r, 0x10, 1)
 
     # cleanup - best effort, ignore failures
-    send_raw(req(0x89, "C:\\RCOPY1.COM"))
-    send_raw(req(0x89, "A:\\RCOPY2.COM"))
+    send_raw(req(0x89, "C:\\RSRC.TXT"))
+    send_raw(req(0x89, "C:\\RCOPY1.TXT"))
+    send_raw(req(0x89, "A:\\RCOPY2.TXT"))
 
     # GETDATETIME (0x8D): single-byte request, 4-byte packed date+time
     # response, no status/errcode. Just confirm it returns 4 bytes and
@@ -186,9 +222,9 @@ def main():
         raw = bytes.fromhex(r)
         got_date = raw[0] | (raw[1] << 8)
         got_time_hour = (raw[2] | (raw[3] << 8)) >> 11
-        roundtrip_ok = got_date == set_date and got_time_hour == 14
+        roundtrip_ok = got_date == set_date and got_time_hour == 23
         results.append(("SETDATETIME round-trip", roundtrip_ok))
-        print(f"[{'PASS' if roundtrip_ok else 'FAIL'}] SETDATETIME round-trip: date={got_date:#06x} (expected {set_date:#06x}), hour={got_time_hour} (expected 14)")
+        print(f"[{'PASS' if roundtrip_ok else 'FAIL'}] SETDATETIME round-trip: date={got_date:#06x} (expected {set_date:#06x}), hour={got_time_hour} (expected 23)")
 
     # SETDATETIME with an out-of-range month (13): expect errcode=4,
     # per RBIL's documented AL=0xFF failure mode.
