@@ -69,6 +69,7 @@ payload0  db 0        ; captured payload[0] byte, read out safely below
 
 section .text
 
+%include "gui.inc"
 %include "hello.inc"
 %include "list.inc"
 %include "drives.inc"
@@ -78,6 +79,7 @@ section .text
 %include "rename.inc"
 %include "copy.inc"
 %include "datetime.inc"
+%include "drawascii.inc"
 %include "critical_error.inc"
 %include "residentcheck.inc"
 
@@ -162,6 +164,8 @@ pftd_int61_handler:
         call    dispatch_getdatetime
         mov     al, [cs:payload0]
         call    dispatch_setdatetime
+        mov     al, [cs:payload0]
+        call    dispatch_draw_ascii
 
 .no_pending:
         pop     ds

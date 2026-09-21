@@ -16,7 +16,11 @@
 ;   0x8C  COPY      -> see copy.inc
 ;   0x8D  GETDATETIME -> see datetime.inc
 ;   0x8E  SETDATETIME -> see datetime.inc
-;   0x81-0x85, 0x8F+ (reserved for future subcommands)
+;   0x8F  DRAW_ASCII  -> see drawascii.inc (debug/diagnostic tool, not
+;                        a file-transfer command - see that file's
+;                        header for why it's kept in the command set
+;                        anyway)
+;   0x81-0x85 (reserved for future subcommands)
 ;
 ; HELLO response layout (fixed 12 bytes):
 ;   offset 0-3  magic "PFD1"
@@ -94,6 +98,14 @@ dispatch_hello:
         push    cx
         push    dx
         push    ds
+
+        ; HELLO is the first command any well-behaved client sends, so
+        ; it's the natural place to guarantee the GUI border exists -
+        ; but ensure_gui_drawn is idempotent and every command that
+        ; wants to show status calls it too (see gui.inc), so this is
+        ; a convenience for the common case, not something other
+        ; dispatch_* handlers may rely on having already happened.
+        call    ensure_gui_drawn
 
         push    cs
         pop     ds
