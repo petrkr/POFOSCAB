@@ -26,6 +26,7 @@ import argparse
 import http.server
 import json
 import logging
+import re
 import socket
 import threading
 import time
@@ -43,6 +44,31 @@ REPLY_RECV = 0x82
 CLOCK_TIMEOUT_S = 2.0
 DETECT_TIMEOUT_S = 0.05
 PAYLOAD_BUFSIZE = 60000
+
+
+def parse_multipart_file(content_type: str, body: bytes) -> tuple[str, bytes] | None:
+    """Extract (filename, data) for the first file part of a multipart/
+    form-data body - just enough to support the ESP32 client's plain
+    single-file <input type=file> POST to /upload. Returns None if
+    content_type isn't multipart or no file part with a filename is
+    found.
+    """
+    match = re.search(r'boundary="?([^";]+)"?', content_type)
+    if match is None:
+        return None
+    boundary = b"--" + match.group(1).encode()
+
+    for part in body.split(boundary)[1:-1]:
+        part = part.strip(b"\r\n")
+        if not part:
+            continue
+        header_blob, _, data = part.partition(b"\r\n\r\n")
+        headers = header_blob.decode(errors="replace")
+        disp_match = re.search(r'filename="([^"]*)"', headers)
+        if disp_match and disp_match.group(1):
+            return disp_match.group(1), data
+
+    return None
 
 
 class PortfolioLinkError(Exception):
@@ -592,10 +618,10 @@ def make_handler(state: BridgeState):
 
         def _do_POST(self):
             length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length).decode()
-            params = urllib.parse.parse_qs(body)
+            raw_body = self.rfile.read(length)
+            url_path = urllib.parse.urlparse(self.path).path
 
-            if self.path not in ("/sendRaw", "/uploadFile", "/downloadFile"):
+            if url_path not in ("/sendRaw", "/upload", "/downloadFile"):
                 self.send_error(404)
                 return
 
@@ -603,7 +629,8 @@ def make_handler(state: BridgeState):
                 self._send_json({"ok": False, "error": "not connected"}, status=503)
                 return
 
-            if self.path == "/sendRaw":
+            if url_path == "/sendRaw":
+                params = urllib.parse.parse_qs(raw_body.decode())
                 hexdata = params.get("data", [""])[0]
                 try:
                     data = bytes.fromhex(hexdata)
@@ -618,24 +645,34 @@ def make_handler(state: BridgeState):
                     except PortfolioLinkError as exc:
                         self._send_json({"ok": False, "error": str(exc)}, status=502)
 
-            elif self.path == "/uploadFile":
-                path = params.get("path", [""])[0]
-                hexdata = params.get("data", [""])[0]
-                try:
-                    data = bytes.fromhex(hexdata)
-                except ValueError:
-                    self._send_json({"ok": False, "error": "bad hex"}, status=400)
+            elif url_path == "/upload":
+                content_type = self.headers.get("Content-Type", "")
+                parsed = parse_multipart_file(content_type, raw_body)
+                if parsed is None:
+                    self._send_json({"ok": False, "message": "no file part"}, status=400)
                     return
+                filename, data = parsed
+
+                qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                dest_dir = qs.get("destDir", ["C:\\"])[0]
+                if not dest_dir.endswith("\\"):
+                    dest_dir += "\\"
+                dest_path = dest_dir + filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
 
                 with state.lock:
                     try:
-                        ok = state.link.upload_file(path, data)
+                        ok = state.link.upload_file(dest_path, data)
                     except PortfolioLinkError as exc:
-                        self._send_json({"ok": False, "error": str(exc)}, status=502)
+                        self._send_json({"ok": False, "message": str(exc)}, status=502)
                         return
-                self._send_json({"ok": ok})
+                if ok:
+                    self._send_json({"ok": True, "message": "Uploaded"})
+                else:
+                    self._send_json({"ok": False, "message": "Upload failed"}, status=500)
 
-            elif self.path == "/downloadFile":
+            elif url_path == "/downloadFile":
+                body = raw_body.decode()
+                params = urllib.parse.parse_qs(body)
                 path = params.get("path", [""])[0]
                 with state.lock:
                     try:
@@ -655,7 +692,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mame-host", default="127.0.0.1")
     parser.add_argument("--mame-port", type=int, default=9997)
-    parser.add_argument("--http-port", type=int, default=8080)
+    parser.add_argument("--http-port", type=int, default=9000)
     parser.add_argument("-v", "--verbose", action="count", default=0,
                          help="-v for INFO, -vv for DEBUG (per-byte handshake logging)")
     args = parser.parse_args()

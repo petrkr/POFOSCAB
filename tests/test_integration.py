@@ -26,6 +26,19 @@ import pytest
 from conftest import config, wait_for_http, wait_for_socket
 
 
+def _multipart_body(filename: str, data: bytes) -> tuple[bytes, str]:
+    """Build a single-file multipart/form-data body for /upload, matching
+    what the ESP32 client firmware's <input type=file> POST sends.
+    """
+    boundary = uuid.uuid4().hex
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+        f"Content-Type: application/octet-stream\r\n\r\n"
+    ).encode() + data + f"\r\n--{boundary}--\r\n".encode()
+    return body, boundary
+
+
 # ============================================================================
 # Helper functions
 # ============================================================================
@@ -83,9 +96,15 @@ def remove_path(base_url: str, path: str, command: int) -> None:
 
 
 def upload_file(base_url: str, path: str, data: bytes) -> bool:
-    """Upload file via /uploadFile endpoint."""
-    body = urllib.parse.urlencode({"path": path, "data": data.hex()}).encode()
-    req_obj = urllib.request.Request(f"{base_url}/uploadFile", data=body, method="POST")
+    """Upload file via /upload endpoint. `path` is the full destination
+    path on the Portfolio (e.g. "C:\\T1234567") - split into destDir +
+    filename to match the ESP32 client firmware's /upload API.
+    """
+    dest_dir, _, filename = path.rpartition("\\")
+    body, boundary = _multipart_body(filename, data)
+    url = f"{base_url}/upload?{urllib.parse.urlencode({'destDir': dest_dir + '\\\\'})}"
+    req_obj = urllib.request.Request(url, data=body, method="POST")
+    req_obj.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
     with urllib.request.urlopen(req_obj, timeout=30) as resp:
         return json.loads(resp.read().decode())["ok"]
 
@@ -185,15 +204,13 @@ def _do_upload_pftd(cfg):
         pftd_data = f.read()
 
     try:
-        body = urllib.parse.urlencode({
-            "path": "C:\\PFTD.COM",
-            "data": pftd_data.hex()
-        }).encode()
+        body, boundary = _multipart_body("PFTD.COM", pftd_data)
         req = urllib.request.Request(
-            f"{cfg.BRIDGE_URL}/uploadFile",
+            f"{cfg.BRIDGE_URL}/upload?" + urllib.parse.urlencode({"destDir": "C:\\"}),
             data=body,
             method="POST"
         )
+        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
         with urllib.request.urlopen(req, timeout=60) as resp:
             result = json.loads(resp.read().decode())
         if not result.get("ok"):
