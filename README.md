@@ -82,10 +82,49 @@ one tool, each gets its own `src/<name>/` directory alongside it.
 
 ## Building
 
-```
+```bash
+# Build PFTD.COM to build/PFTD.COM (uses root Makefile)
+make pftd
+
+# Or directly:
 cd src/pftd
-nasm -f bin PFTD.asm -o PFTD.COM
+nasm -f bin -i . PFTD.asm -o ../../build/PFTD.COM
 ```
+
+## Testing
+
+Tests run against the Smart Cable bridge API, supporting multiple backends:
+
+### Prerequisites
+
+- MAME build with smartcable support (local: `/home/petrkr/git/mame`)
+- Python 3 with pytest: `pip install pytest` (in a venv, not system-wide)
+- For MAME backend: `~/.mame/nvram/pofo/ccma_ram` - FAT12 memory card with PFTD.COM
+
+### Running tests
+
+```bash
+# Headless MAME with automatic upload (default)
+pytest tests/ -v
+
+# Skip upload step (PFTD already on card)
+SKIP_UPLOAD=1 pytest tests/ -v
+
+# Skip build step (binary already built)
+SKIP_BUILD=1 pytest tests/ -v
+
+# Manual MAME UI mode (start MAME and bridge in separate terminals first)
+POFOSCAB_BACKEND=mame_manual pytest tests/ -v
+
+# Real hardware (Portfolio over ESP32 Smart Cable)
+POFOSCAB_BACKEND=hardware POFOSCAB_BRIDGE_URL=http://10.220.179.55 pytest tests/ -v
+```
+
+### Backend modes
+
+- **`mame_auto`** (default): Starts MAME and Python bridge automatically
+- **`mame_manual`**: Assumes MAME and bridge already running (start manually)
+- **`hardware`**: Targets real Portfolio over Smart Cable (ESP32 client)
 
 ## CI / Releases
 
