@@ -7,8 +7,8 @@
 ; command space is safe to use. Left as a new command rather than
 ; changing the ROM's list dispatch: legacy list (6) keeps working
 ; unmodified for anything that only speaks the stock protocol - the
-; client picks 0x86 over 6 based on the HELLO capabilities bit
-; (CAP_CORE, see hello.inc).
+; client picks 0x86 over 6 based on whether this PFTD's HELLO VERSION
+; is known to support it (see hello.inc).
 ;
 ; Request layout (identical prefix to the ROM's own list request):
 ; payload[0]=0x86, payload[1..2] unused (0x00, 0x70 - mirrors the ROM's
@@ -68,10 +68,6 @@
 ; every DOS call after that, and all writes into list_response, run
 ; with DS=CS, which DOS calls do not change out from under us (DS:DX is
 ; a call parameter, not something DOS repoints).
-
-; This command's capability bit is CAP_CORE (defined in hello.inc,
-; shared with every other file-op command - see that file's
-; capabilities bitmask comment for why they're grouped together).
 
 LIST_CMD equ 0x86
 
