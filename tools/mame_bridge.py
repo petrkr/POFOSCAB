@@ -363,9 +363,8 @@ class MameLink:
         if response is None or len(response) < 12 or response[:4] != b"PFD1":
             return None
         build_id = int.from_bytes(response[4:8], "little")
-        version = response[8]
-        capabilities = response[9]
-        return {"buildId": build_id, "version": version, "capabilities": capabilities}
+        version = f"{response[8]}.{response[9]}.{response[10]}"
+        return {"buildId": build_id, "version": version}
 
     # -- ROM-native transmit (0x03, upload) / receive (0x02, download) -------
     #
@@ -567,7 +566,10 @@ class BridgeState:
             if connected != self.connected:
                 log.info("Portfolio link %s", "connected" if connected else "disconnected")
             if pftd != self.pftd:
-                log.info("PFTD %s", "detected" if pftd else "not detected")
+                if pftd:
+                    log.info("PFTD detected (v%s, build %08x)", pftd["version"], pftd["buildId"])
+                else:
+                    log.info("PFTD not detected")
             self.connected = connected
             self.pftd = pftd
             self._stop.wait(DETECT_POLL_INTERVAL_S)
