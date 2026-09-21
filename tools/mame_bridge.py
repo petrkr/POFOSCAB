@@ -49,6 +49,18 @@ class PortfolioLinkError(Exception):
     pass
 
 
+class MameLinkDown(Exception):
+    """Raised when the TCP socket to MAME itself is gone (not just the
+    Portfolio ROM failing to answer a handshake byte).
+
+    This is the "cable unplugged" case: MAME isn't running, or its
+    smartcable TCP port dropped mid-session. Distinct from a plain
+    handshake timeout (Portfolio connected but ROM/PFTD not answering),
+    which just means the emulated Portfolio is "disconnected" and is
+    reported as such via /status rather than treated as a bridge fault.
+    """
+
+
 class MameLink:
     """Byte-level client for MAME's pofo_smartcable bridge socket.
 
@@ -56,49 +68,82 @@ class MameLink:
     just asks it to send or receive one byte at a time. Everything above
     single-byte granularity (block framing/checksum, application
     protocol) is unchanged from the earlier bit-level bridge.
+
+    Does NOT connect in the constructor - callers must call connect()
+    and are expected to retry it on MameLinkDown, so a bridge started
+    before MAME (or outliving a MAME restart) can wait for the TCP port
+    to (re)appear instead of crashing, mirroring a real Smart Cable
+    behaving like an unplugged cable rather than an error.
     """
 
     def __init__(self, mame_host: str, mame_port: int):
-        self._sock = socket.create_connection((mame_host, mame_port), timeout=5)
-        self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self._sock.setblocking(True)
+        self._mame_host = mame_host
+        self._mame_port = mame_port
+        self._sock: socket.socket | None = None
         self._lock = threading.Lock()
         self._recv_buf = b""
 
+    @property
+    def connected(self) -> bool:
+        return self._sock is not None
+
+    def connect(self, timeout: float = 2.0) -> None:
+        log.debug("connecting to MAME smartcable at %s:%d", self._mame_host, self._mame_port)
+        sock = socket.create_connection((self._mame_host, self._mame_port), timeout=timeout)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        sock.setblocking(True)
+        self._sock = sock
+        self._recv_buf = b""
+        log.info("connected to MAME smartcable at %s:%d", self._mame_host, self._mame_port)
+
     def close(self):
-        self._sock.close()
+        if self._sock is not None:
+            self._sock.close()
+            self._sock = None
 
     # -- byte-level handshake, delegated to pofo_smartcable ------------------
 
     def _recv_reply(self, timeout_s: float):
         # Reassembles {reg, ok, value} reply triples out of _recv_buf,
         # blocking up to timeout_s for more data if a full triple isn't
-        # buffered yet.
+        # buffered yet. Only a *timeout* (ROM/PFTD not answering) is a
+        # normal None-return - a socket error or EOF means the TCP link
+        # to MAME itself is gone and must surface as MameLinkDown so
+        # callers stop treating this as "Portfolio just disconnected".
         deadline = time.monotonic() + timeout_s
         while len(self._recv_buf) < 3:
             remaining = max(deadline - time.monotonic(), 0)
             self._sock.settimeout(remaining if remaining > 0 else 0.001)
             try:
                 chunk = self._sock.recv(4096)
-            except (socket.timeout, BlockingIOError):
-                chunk = b""
-            if chunk:
-                self._recv_buf += chunk
-            elif remaining <= 0:
-                return None
+            except socket.timeout:
+                if remaining <= 0:
+                    return None
+                continue
+            except OSError as exc:
+                raise MameLinkDown(f"MAME socket error: {exc}") from exc
+            if not chunk:
+                raise MameLinkDown("MAME socket closed (EOF)")
+            self._recv_buf += chunk
         reg, ok, value = self._recv_buf[0], self._recv_buf[1], self._recv_buf[2]
         self._recv_buf = self._recv_buf[3:]
         return reg, ok, value
 
     def _receive_byte(self, timeout_s: float):
-        self._sock.sendall(bytes([REQ_RECEIVE, 0x00]))
+        try:
+            self._sock.sendall(bytes([REQ_RECEIVE, 0x00]))
+        except OSError as exc:
+            raise MameLinkDown(f"MAME socket error: {exc}") from exc
         reply = self._recv_reply(timeout_s)
         if reply is None or reply[0] != REPLY_RECV or reply[1] != 1:
             return None
         return reply[2]
 
     def _send_byte(self, data: int) -> bool:
-        self._sock.sendall(bytes([REQ_SEND, data & 0xFF]))
+        try:
+            self._sock.sendall(bytes([REQ_SEND, data & 0xFF]))
+        except OSError as exc:
+            raise MameLinkDown(f"MAME socket error: {exc}") from exc
         reply = self._recv_reply(CLOCK_TIMEOUT_S)
         if reply is None or reply[0] != REPLY_SEND:
             return False
@@ -108,8 +153,10 @@ class MameLink:
         if not data:
             return True
 
+        log.debug("send_block: waiting for 'Z' sync, %d bytes to send", len(data))
         recv = self._receive_byte(CLOCK_TIMEOUT_S)
         if recv is None or recv != ord('Z'):
+            log.debug("send_block: sync failed (got %r)", recv)
             return False
 
         time.sleep(0.05)
@@ -138,16 +185,20 @@ class MameLink:
             return False
 
         recv = self._receive_byte(CLOCK_TIMEOUT_S)
-        return recv is not None and recv == checksum
+        ok = recv is not None and recv == checksum
+        log.debug("send_block: %s (checksum ack %r, expected %02x)", "ok" if ok else "checksum mismatch", recv, checksum)
+        return ok
 
     def _receive_block(self, max_len: int = PAYLOAD_BUFSIZE):
         checksum = 0
 
         if not self._send_byte(ord('Z')):
+            log.debug("receive_block: failed to send 'Z' sync")
             return None
 
         recv = self._receive_byte(CLOCK_TIMEOUT_S)
         if recv is None or recv != 0xA5:
+            log.debug("receive_block: no 0xA5 ack (got %r)", recv)
             return None
 
         len_l = self._receive_byte(CLOCK_TIMEOUT_S)
@@ -165,18 +216,21 @@ class MameLink:
         for _ in range(length):
             recv = self._receive_byte(CLOCK_TIMEOUT_S)
             if recv is None:
+                log.debug("receive_block: timeout mid-payload (%d/%d bytes)", len(data), length)
                 return None
             checksum = (checksum + recv) & 0xFF
             data.append(recv)
 
         recv = self._receive_byte(CLOCK_TIMEOUT_S)
         if recv is None or ((256 - recv) & 0xFF) != checksum:
+            log.debug("receive_block: checksum mismatch (got %r, expected %02x)", recv, checksum)
             return None
 
         time.sleep(0.0001)
         if not self._send_byte((256 - checksum) & 0xFF):
             return None
 
+        log.debug("receive_block: ok, %d bytes", length)
         return bytes(data)
 
     def detect_once(self) -> bool:
@@ -265,8 +319,22 @@ class MameLink:
             raise PortfolioLinkError(last_error)
 
     def hello(self):
-        response = self.send_raw(bytes([0x80]))
-        if len(response) < 12 or response[:4] != b"PFD1":
+        # Single attempt, no retry loop: unlike send_raw_instrumented()'s
+        # retry (meant for a real transfer that's expected to succeed),
+        # hello() is polled speculatively just to check whether PFTD
+        # happens to be resident - most of the time (ROM-native File
+        # Transfer Server only, no PFTD) it's expected to fail every
+        # time. Each _send_block() attempt visibly flickers the ROM into
+        # "Receiving" on the Portfolio's screen, so retrying 5x per call
+        # (send_raw_instrumented's 3s/~0.6s-per-attempt budget) made that
+        # flicker distractingly frequent for no benefit - one shot is
+        # just as conclusive as five when the answer is "no PFTD".
+        with self._lock:
+            self._drain_stale()
+            if not self._send_block(bytes([0x80])):
+                return None
+            response = self._receive_block()
+        if response is None or len(response) < 12 or response[:4] != b"PFD1":
             return None
         build_id = int.from_bytes(response[4:8], "little")
         version = response[8]
@@ -394,14 +462,25 @@ class MameLink:
 # rather than attempting a handshake blind.
 DETECT_POLL_INTERVAL_S = 0.1
 
+# How often to retry socket.create_connection() to MAME while its
+# smartcable TCP port doesn't exist yet (bridge started before MAME) or
+# has gone away (MAME closed/restarted) - the "cable unplugged" state.
+MAME_RECONNECT_INTERVAL_S = 1.0
+
 
 class BridgeState:
     def __init__(self, link: MameLink):
         self.link = link
         self.lock = threading.Lock()
-        self.connected = False
+        self.connected = False  # Portfolio ROM answering the handshake
         self.pftd = None
         self._stop = threading.Event()
+
+    @property
+    def mame_linked(self) -> bool:
+        """Whether the TCP socket to MAME itself is up (independent of
+        whether the emulated Portfolio is answering handshakes)."""
+        return self.link.connected
 
     def start_detect_loop(self) -> None:
         thread = threading.Thread(target=self._detect_loop, daemon=True)
@@ -412,25 +491,72 @@ class BridgeState:
 
     def _detect_loop(self) -> None:
         while not self._stop.is_set():
+            if not self.link.connected:
+                self._reconnect_to_mame()
+                continue
+
             with self.lock:
-                connected = self.link.detect_once()
-                pftd = None
-                if connected:
-                    # hello() (0x80) only succeeds once PFTD is resident
-                    # and running - the ROM-native File Transfer Server
-                    # alone (no PFTD) has no handler for it and this
-                    # raises. That's expected, not a link failure: catch
-                    # it here so one unanswered probe can't take down
-                    # this whole background thread (an uncaught
-                    # exception here would silently kill it, freezing
-                    # `connected` at whatever it last was forever).
-                    try:
-                        pftd = self.link.hello()
-                    except PortfolioLinkError:
+                try:
+                    connected = self.link.detect_once()
+                except MameLinkDown as exc:
+                    # Cable-unplugged case: MAME's TCP port itself died
+                    # mid-session (process killed/restarted). Drop the
+                    # dead socket and go back to reconnect-retry, same as
+                    # if MAME had never been there - report "no link" via
+                    # /status instead of crashing this thread.
+                    log.warning("lost connection to MAME: %s", exc)
+                    self.link.close()
+                    connected = False
+                    pftd = None
+                else:
+                    pftd = self.pftd
+                    if connected and not self.connected:
+                        # Only probe hello() on the disconnected->connected
+                        # edge, not on every poll tick while connected stays
+                        # true - a repeated 0x80 send_block/receive_block
+                        # round trip every DETECT_POLL_INTERVAL_S visibly
+                        # flickers the ROM's File Transfer Server into
+                        # "Receiving" even when there's no PFTD to answer
+                        # it. hello() (0x80) only succeeds once PFTD is
+                        # resident and running - the ROM-native File
+                        # Transfer Server alone (no PFTD) has no handler
+                        # for it and this raises. That's expected, not a
+                        # link failure: catch it here so one unanswered
+                        # probe can't take down this whole background
+                        # thread (an uncaught exception here would
+                        # silently kill it, freezing `connected` at
+                        # whatever it last was forever).
+                        try:
+                            pftd = self.link.hello()
+                        except MameLinkDown as exc:
+                            log.warning("lost connection to MAME during hello(): %s", exc)
+                            self.link.close()
+                            connected = False
+                            pftd = None
+                        except PortfolioLinkError:
+                            pftd = None
+                    elif not connected:
                         pftd = None
+
+            if connected != self.connected:
+                log.info("Portfolio link %s", "connected" if connected else "disconnected")
+            if pftd != self.pftd:
+                log.info("PFTD %s", "detected" if pftd else "not detected")
             self.connected = connected
             self.pftd = pftd
             self._stop.wait(DETECT_POLL_INTERVAL_S)
+
+    def _reconnect_to_mame(self) -> None:
+        self.connected = False
+        self.pftd = None
+        try:
+            with self.lock:
+                self.link.connect(timeout=1.0)
+        except OSError as exc:
+            log.debug("MAME not reachable yet: %s", exc)
+            self._stop.wait(MAME_RECONNECT_INTERVAL_S)
+        else:
+            log.info("re-established TCP link to MAME")
 
 
 def make_handler(state: BridgeState):
@@ -453,6 +579,18 @@ def make_handler(state: BridgeState):
                 self.send_error(404)
 
         def do_POST(self):
+            log.info("POST %s", self.path)
+            try:
+                self._do_POST()
+            except MameLinkDown as exc:
+                # MAME's TCP port died mid-request (cable unplugged while
+                # in use) - report it the same as "not connected" rather
+                # than a 500. The detect loop will notice the dead link,
+                # close it, and start reconnect-retrying on its own.
+                log.warning("MAME link dropped during %s: %s", self.path, exc)
+                self._send_json({"ok": False, "error": "not connected"}, status=503)
+
+        def _do_POST(self):
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length).decode()
             params = urllib.parse.parse_qs(body)
@@ -518,15 +656,28 @@ def main():
     parser.add_argument("--mame-host", default="127.0.0.1")
     parser.add_argument("--mame-port", type=int, default=9997)
     parser.add_argument("--http-port", type=int, default=8080)
+    parser.add_argument("-v", "--verbose", action="count", default=0,
+                         help="-v for INFO, -vv for DEBUG (per-byte handshake logging)")
     args = parser.parse_args()
 
-    print(f"Connecting to MAME dummy_i8255 bridge at {args.mame_host}:{args.mame_port} ...")
+    level = logging.WARNING
+    if args.verbose == 1:
+        level = logging.INFO
+    elif args.verbose >= 2:
+        level = logging.DEBUG
+    logging.basicConfig(level=level, format="%(asctime)s %(levelname)-7s %(message)s")
+
+    # Not connected to MAME here on purpose: the detect loop treats "no
+    # link yet" the same as "link dropped" and retries on its own, so the
+    # bridge can be started before MAME (or survive it restarting)
+    # instead of crashing at startup like the old eager-connect did.
+    log.info("mame_bridge starting, will connect to MAME at %s:%d", args.mame_host, args.mame_port)
     link = MameLink(args.mame_host, args.mame_port)
     state = BridgeState(link)
     state.start_detect_loop()
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", args.http_port), make_handler(state))
-    print(f"mame_bridge listening on http://127.0.0.1:{args.http_port}")
+    log.info("mame_bridge listening on http://127.0.0.1:%d", args.http_port)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
