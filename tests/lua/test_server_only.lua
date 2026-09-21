@@ -1,0 +1,12 @@
+local dir = debug.getinfo(1, "S").source:match("@(.*/)")
+local h = dofile(dir .. "helpers.lua")
+local init_dip_dos = dofile(dir .. "step_init_dip_dos.lua")
+
+coroutine.wrap(function()
+  emu.wait(0.5)
+  init_dip_dos()
+  emu.wait(0.5)
+  h.run_fileserver()
+  emu.print_info("test_server_only: WAYPOINT server-ready")
+  emu.wait(25)
+end)()

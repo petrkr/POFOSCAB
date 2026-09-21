@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # mame_bridge.py - MAME-based stand-in for the ESP32 PortfolioESPlink
-# client, so regression_test.py can exercise PFTD's real bit-bang wire
+# client, so pytest integration tests can exercise PFTD's real bit-bang wire
 # protocol against an emulated Atari Portfolio (MAME's `pofo` driver)
 # instead of a physical Portfolio + Smart Cable.
 #
@@ -10,8 +10,8 @@
 #     byte-level request/reply wire format - the card does the Smart
 #     Cable bit-bang handshake itself and this side just asks for a
 #     byte to be sent or received.
-#   - HTTP to regression_test.py, replicating the ESP32 client firmware's
-#     /sendRaw and /status endpoints so regression_test.py runs
+#   - HTTP integration-test client, replicating the ESP32 client firmware's
+#     /sendRaw and /status endpoints for integration tests
 #     unmodified.
 #
 # The block/application-level protocol logic (sendBlock/receiveBlock/
