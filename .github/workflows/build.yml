@@ -34,6 +34,30 @@ jobs:
           EOF
           cat build_id.inc
 
+      - name: Generate version.inc from tag (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: src/pftd
+        run: |
+          # GITHUB_REF_NAME is "vMAJOR.MINOR.PATCH" here (workflow only
+          # triggers on tags matching v*.*.*, see the `on:` block above).
+          VER="${GITHUB_REF_NAME#v}"
+          MAJOR="${VER%%.*}"
+          REST="${VER#*.}"
+          MINOR="${REST%%.*}"
+          PATCH="${REST#*.}"
+          cat > version.inc <<EOF
+          ; version.inc - CI-generated, see this file's committed
+          ; version in git for the full explanation. This copy is
+          ; overwritten wholesale by .github/workflows/build.yml, not
+          ; patched - only happens on a vMAJOR.MINOR.PATCH tag build
+          ; (an ordinary push keeps the committed 0.0.0 default).
+
+          VERSION_MAJOR equ ${MAJOR}
+          VERSION_MINOR equ ${MINOR}
+          VERSION_PATCH equ ${PATCH}
+          EOF
+          cat version.inc
+
       - name: Assemble PFTD.COM
         working-directory: src/pftd
         run: nasm -f bin PFTD.asm -o PFTD.COM
