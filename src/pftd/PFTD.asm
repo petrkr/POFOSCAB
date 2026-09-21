@@ -112,6 +112,20 @@ pftd_int61_handler:
         mov     ds, ax
         mov     si, [cs:saved_dx]
         mov     al, [si]
+        ; Consume the byte in the foreign buffer itself, not just our
+        ; own pending/payload0 copy of it: the ROM's own idle loop
+        ; re-arms its receive slot (int 0x61 AX=0x3001) periodically
+        ; without a new byte from any client, which otherwise makes
+        ; this handler re-read and re-dispatch the SAME stale command
+        ; byte on every re-arm (confirmed on real hardware and in
+        ; MAME - see project memory "pftd screen log idea"). 0x00
+        ; matches none of this driver's command bytes ([2,6] is the
+        ; ROM's own range, [0x80,0x8E] is ours) or the ROM's, so a
+        ; stale re-read after this is a harmless no-op instead of a
+        ; repeat dispatch. Safe to do: this buffer's only reader after
+        ; the real handshake completes is this same payload[0] check,
+        ; on the ROM's own next idle re-arm.
+        mov     byte [si], 0
         push    cs
         pop     ds                      ; DS=CS again immediately, nothing
                                          ; below this line ever uses the
