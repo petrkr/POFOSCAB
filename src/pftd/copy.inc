@@ -133,6 +133,18 @@ dispatch_copy:
         mov     al, [dta_buf+0x15]
         mov     [copy_src_attr], al
 
+        ; Progress bar setup: total size (low word only - real-world
+        ; Portfolio storage/transfer sizes fit comfortably, and losing
+        ; precision above 64K only blurs the displayed percentage, it
+        ; never affects the actual copy loop below) and reset the
+        ; running byte counter. ensure_gui_drawn is idempotent - safe
+        ; to call unconditionally regardless of what else has or
+        ; hasn't drawn the GUI yet this session (see gui.inc header).
+        mov     ax, [dta_buf+0x1A]
+        mov     [copy_total_size], ax
+        mov     word [copy_bytes_done], 0
+        call    ensure_gui_drawn
+
         ; Open source, read-only.
         mov     byte [cs:critical_error_flag], 0
         mov     dx, copy_src_path
@@ -185,6 +197,21 @@ dispatch_copy:
 
         cmp     ax, cx          ; short write (AX < CX) = disk full,
         jne     .disk_full      ; signalled via CF=0, not CF=1
+
+        ; Progress update: bytes_done += cx (bytes just written),
+        ; percent = bytes_done * 100 / total_size (16-bit, same
+        ; low-word-only precision tradeoff as the size capture above).
+        ; total_size=0 (empty file, or captured size overflowed 64K)
+        ; is skipped - .copy_done below still fires normally either
+        ; way, this only affects the live bar.
+        add     [copy_bytes_done], cx
+        cmp     word [copy_total_size], 0
+        je      .copy_loop
+        mov     ax, [copy_bytes_done]
+        mov     dx, 100
+        mul     dx              ; dx:ax = bytes_done * 100
+        div     word [copy_total_size]  ; ax = percent
+        call    gui_progress
 
         jmp     .copy_loop
 
@@ -317,5 +344,11 @@ copy_dst_handle: resw 1             ; register - bx is reused per
 copy_src_attr:   resb 1             ; attribute byte read via Find First,
                                      ; passed as CX to AH=0x3C so the
                                      ; destination's attributes match
+copy_total_size: resw 1             ; source file size (low word only,
+                                     ; see the progress-bar comment
+                                     ; above), for the gui_progress
+                                     ; percent calculation in .copy_loop
+copy_bytes_done: resw 1             ; running total of bytes written so
+                                     ; far this copy, same width/caveat
 
 section .text
