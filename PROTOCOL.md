@@ -58,14 +58,24 @@ should send after connecting.
 | Offset | Size | Field | Description |
 |---|---|---|---|
 | 0 | 4 | Magic | ASCII `"PFD1"`. |
-| 4 | 4 | Build ID | Binary, little-endian. Identifies the exact build of the server. |
-| 8 | 1 | Version | `1` = this format. `0xFF` = extended format; see below. |
-| 9 | 1 | Capabilities | Bitmask, see [Capabilities](#capabilities-bitmask). |
-| 10 | 2 | Reserved | Always `0x00 0x00`. |
+| 4 | 4 | Build ID | Binary, little-endian. Identifies the exact git commit the server was built from. |
+| 8 | 1 | Version major | See [Version](#version). |
+| 9 | 1 | Version minor | |
+| 10 | 1 | Version patch | |
+| 11 | 1 | Reserved | Always `0x00`. |
 
-If offset 8 is `0xFF`, the response format from offset 9 onward is
-redefined by whatever extended version number follows at offset 9 -
-none is defined at the time of writing.
+#### Version
+
+Offset 8-10 is a human-facing `vMAJOR.MINOR.PATCH` software version,
+separate from Build ID (offset 4-7, the exact commit) - see that
+field's own description above for why both exist independently. A
+breaking protocol/wire-format change bumps the major version, the same
+as any other breaking software change; there is no separate "response
+format version" distinct from this. `0.0.0` means "not a tagged
+release" - an ordinary development build. There is no separate pre-
+release/snapshot flag; a real release is whatever GitHub itself
+published under Releases for a `vMAJOR.MINOR.PATCH` tag, anything else
+is just a workflow artifact build.
 
 ### LIST - `0x86`
 
@@ -192,6 +202,23 @@ response, sent as fixed-size binary rather than ASCIIZ.
 **Response:** see [Status/errcode response](#statuserrcode-response).
 `errcode 4` means the date or time value was out of range.
 
+### DRAW_ASCII - `0x8F`
+
+Debug/diagnostic tool, not a file-transfer command - writes arbitrary
+text at an arbitrary row/col on the Portfolio's own LCD, as a local
+side effect only (nothing about this is visible to any other client or
+persisted anywhere). Built to interactively map out which regions of
+the File Transfer Server screen the ROM does and doesn't redraw during
+normal operation, without needing a PFTD rebuild per test position;
+kept in the command set since it stays useful for any future on-screen
+layout work.
+
+**Request:** `0x8F, 0x00, 0x70`, then row (1 byte, 0-7), col (1 byte,
+0-39), then an ASCIIZ string to print. No bounds checking on row/col/
+text length.
+
+**Response:** none - fire-and-forget.
+
 ## Status/errcode response
 
 MKDIR, DELETE, RMDIR, RENAME, COPY, and SETDATETIME share this
@@ -210,18 +237,6 @@ response shape - it is always exactly 2 bytes:
 | `3` | Disk full. |
 | `4` | Access denied - covers write-protected media, read-only files, "already exists", "not empty", "destination exists", "cross-drive operation attempted", and out-of-range date/time values, depending on command. |
 | `0xFF` | An unrecoverable error occurred; the specific cause could not be determined. |
-
-## Capabilities bitmask
-
-The capabilities byte in the HELLO response (offset 9) is grouped by
-command *family*, not one bit per individual command - most bits are
-reserved for families that don't exist yet.
-
-| Bit | Mask | Meaning |
-|---|---|---|
-| 0 | `0x01` | Core file operations: LIST, DRIVES, MKDIR, DELETE, RMDIR, RENAME, COPY (`0x86`-`0x8C`). |
-| 1 | `0x02` | Clock access: GETDATETIME, SETDATETIME (`0x8D`-`0x8E`). |
-| 2-7 | - | Reserved for future command families. |
 
 ## Packed date/time format
 
@@ -246,4 +261,4 @@ uses in directory entries:
 
 ## Reserved command codes
 
-`0x81`-`0x85` and `0x8F`-`0xFF` are unassigned.
+`0x81`-`0x85` and `0x90`-`0xFF` are unassigned.
