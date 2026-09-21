@@ -1,2 +1,19 @@
 *.COM
 tests/*.COM
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Local Python environments
+.venv/
+venv/
+
+# Build artifacts
+build/
