@@ -3,7 +3,7 @@
 # client's /sendRaw debug endpoint (POST, form param "data" = hex
 # string). Talks to a real Portfolio over a live Smart Cable (ESP32
 # client, see PortfolioESPlink's handleSendRaw) or to an emulated one
-# (MAME's pofo_bridge, via mame_bridge.py - see run_mame_regression.sh)
+# (MAME's smartcable, via mame_bridge.py - see run_mame_regression.sh)
 # through the same HTTP API - it is meant to be run after flashing a
 # new PFTD.COM build, or after rebuilding the MAME fork, as a fast
 # regression check across every command before doing anything more
