@@ -45,10 +45,11 @@
 ; erroring on a duplicate EQU redefinition with a different value -
 ; not an issue here since both are pure constants, so including them
 ; again here (in case gui.inc is %include'd before hello.inc, which
-; would otherwise leave BUILD_ID undefined when row 0's text is built
-; below) is safe regardless of include order elsewhere in PFTD.asm.
-%include "version.inc"
+; would otherwise leave BUILD_ID/VERSION_* undefined when row 0's text
+; is built below) is safe regardless of include order elsewhere in
+; PFTD.asm.
 %include "build_id.inc"
+%include "version.inc"
 
 GUI_ROW_TOP    equ 5
 GUI_ROW_MID    equ 6
@@ -108,12 +109,15 @@ ensure_gui_drawn:
         mov     dl, GUI_COLS-1
         int     0x10
 
-        ; Row 0: build "<0xDA><0xC4>PFTD vN build XXXXXXXX<0xC4>...<0xBF>"
+        ; Row 0: build "<0xDA><0xC4> PFTD vX.Y.Z (XXXXXXXX)<0xC4>...<0xBF>"
         ; into gui_row0_buf, filling to GUI_COLS-1 chars (leaves the
-        ; trailing NUL) before printing - hex digits of BUILD_ID come
-        ; from build_id.inc (%include'd via hello.inc already, so
-        ; BUILD_ID is defined by the time PFTD.asm reaches this file's
-        ; %include - see PFTD.asm's include order).
+        ; trailing NUL) before printing. Version leads (the human-
+        ; facing identity: 0.0.0 on an ordinary dev build, the real
+        ; tag version on a release build - see version.inc), build
+        ; hash trails in parens - both %include'd via hello.inc
+        ; already (so VERSION_MAJOR/MINOR/PATCH and BUILD_ID are
+        ; defined by the time PFTD.asm reaches this file's %include -
+        ; see PFTD.asm's include order).
         mov     di, gui_row0_buf
         mov     al, 0xDA
         stosb
@@ -122,10 +126,25 @@ ensure_gui_drawn:
         mov     si, gui_title_text
         call    .append_si
 
+        mov     al, VERSION_MAJOR
+        call    .append_dec8
+        mov     al, '.'
+        stosb
+        mov     al, VERSION_MINOR
+        call    .append_dec8
+        mov     al, '.'
+        stosb
+        mov     al, VERSION_PATCH
+        call    .append_dec8
+
+        mov     si, gui_build_text
+        call    .append_si
         mov     ax, BUILD_ID >> 16
         call    .append_hex16
         mov     ax, BUILD_ID & 0xFFFF
         call    .append_hex16
+        mov     al, ')'
+        stosb
 
 .row0_pad:
         ; di currently points past the last content byte written above
@@ -241,6 +260,32 @@ ensure_gui_drawn:
         stosb
         loop    .append_hex16_digit
         pop     dx
+        ret
+
+; .append_dec8: append AL (0-255) as decimal, no leading zeros, to
+; DS:DI (di advances past it). Local to ensure_gui_drawn. Same
+; algorithm as hexprint.inc's print_dec8, adapted to append into a
+; buffer via stosb instead of printing straight to the screen via
+; int 0x21 (not callable from here - see PFTD.asm header comment on
+; int 0x21 reentrancy). Clobbers AX/BX/CX/DX/DI.
+.append_dec8:
+        xor     ah, ah          ; ax = 0..255
+        mov     bx, 10
+        xor     cx, cx          ; cx = digit count pushed so far
+.append_dec8_divide:
+        xor     dx, dx          ; dx:ax is the dividend - dx must be 0,
+                                 ; ax alone is <= 255 so this is safe
+        div     bx              ; ax = ax/10, dx = ax%10
+        push    dx              ; remainder = next digit, least
+        inc     cx              ; significant first
+        cmp     ax, 0
+        jne     .append_dec8_divide
+.append_dec8_print:
+        pop     dx
+        mov     al, dl
+        add     al, '0'
+        stosb
+        loop    .append_dec8_print
         ret
 
 ; gui_print: position cursor at (DH=row, DL=col) and print the ASCIIZ
@@ -432,5 +477,6 @@ gui_border_bottom:
         times (GUI_COLS-2) db 0xC4
         db      0xD9, 0
 
-gui_title_text: db ' PFTD v', '0'+VERSION, ' build ', 0
+gui_title_text: db ' PFTD v', 0
+gui_build_text: db ' (', 0
 gui_hexdig:     db '0123456789abcdef'

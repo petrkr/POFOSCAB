@@ -24,15 +24,27 @@
 ;
 ; HELLO response layout (fixed 12 bytes):
 ;   offset 0-3  magic "PFD1"
-;   offset 4-7  build id (4 bytes, binary). VERSION comes from
-;               version.inc, BUILD_ID from build_id.inc (kept separate
-;               since CI regenerates the latter wholesale per build -
-;               see build_id.inc's header).
-;   offset 8    version   (1 = this format; 0xFF = extended - offset 9 is
-;                          then an extended version number and everything
-;                          from there on is redefined per that version)
-;   offset 9    reserved (0x00)
-;   offset 10-11 reserved (0x00, 0x00)
+;   offset 4-7  build id (4 bytes, binary), from build_id.inc (kept
+;               separate from the version below since CI regenerates
+;               it wholesale on every build, tag or not - see
+;               build_id.inc's header).
+;   offset 8    version major (0-255). A breaking protocol/format
+;                             change bumps this, same as any other
+;                             breaking software change - there is no
+;                             separate "response format version"
+;                             distinct from the software version (see
+;                             version.inc).
+;   offset 9    version minor (0-255)
+;   offset 10   version patch (0-255)
+;   offset 11   reserved (0x00)
+;
+; Version major/minor/patch (offset 8-10) is a human-facing "vX.Y.Z"
+; software version - see version.inc's own header. 0.0.0 means "not a
+; tagged release" (an ordinary dev/master build); there is no separate
+; snapshot/pre-release flag - a client that cares about that
+; distinction can tell a real release from a dev build by checking for
+; 0.0.0, and GitHub itself is the source of truth for which builds are
+; "real" (Releases) vs. not (workflow artifacts).
 ;
 ; No capabilities bitmask: this protocol has never been released (no
 ; version has ever shipped with only some commands supported - every
@@ -41,23 +53,22 @@
 ; buildout, not a real "partial support" signal), so there is nothing
 ; for a bitmask to distinguish yet. What a given PFTD build supports is
 ; simply whatever this file's own command list (above) plus each
-; command's .inc file documents for that VERSION - a per-command
+; command's .inc file documents for that version - a per-command
 ; capability bit would only earn its keep once some real build
-; actually ships without the full set, which hasn't happened. Revisit
-; this (bring the bitmask back, at offset 9, still reserved for it) if
-; that ever changes.
+; actually ships without the full set, which hasn't happened.
 
-%include "version.inc"
 %include "build_id.inc"
+%include "version.inc"
 
 HELLO_CMD equ 0x80
 
 hello_response:
         db      'PFD1'          ; magic
         dd      BUILD_ID        ; build id / dev snapshot marker
-        db      VERSION
+        db      VERSION_MAJOR
+        db      VERSION_MINOR
+        db      VERSION_PATCH
         db      0x00            ; reserved
-        db      0x00, 0x00      ; reserved
 hello_response_len equ $ - hello_response
 
 ; dispatch_hello: called from pftd_int61_handler with AL = payload[0],

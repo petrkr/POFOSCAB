@@ -57,7 +57,8 @@ print_hex32:
 
 ; print_dec8: print AL (0-255) as decimal, no leading zeros (so "1" stays
 ; "1", not "001" - unlike print_hex16/32 this is meant for small
-; human-facing numbers like VERSION, not a fixed-width machine value).
+; human-facing numbers like VERSION_MAJOR, not a fixed-width machine
+; value).
 ; Preserves AX/BX/CX/DX.
 print_dec8:
         push    ax

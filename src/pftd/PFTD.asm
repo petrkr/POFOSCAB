@@ -231,16 +231,29 @@ install:
         int     0x21
 
 .not_resident:
-        ; Print "PFTD v" then VERSION as a decimal number - e.g. "PFTD v1"
+        ; Print "PFTD v" then VERSION_MAJOR.MINOR.PATCH, e.g.
+        ; "PFTD v0.0.0" - 0.0.0 on an ordinary dev build, the real
+        ; vMAJOR.MINOR.PATCH on a tagged CI release build (see
+        ; version.inc).
         mov     dx, msg_pftd_v
         mov     ah, 0x09
         int     0x21
 
-        mov     al, VERSION
+        mov     al, VERSION_MAJOR
+        call    print_dec8
+        mov     dx, msg_dot
+        mov     ah, 0x09
+        int     0x21
+        mov     al, VERSION_MINOR
+        call    print_dec8
+        mov     dx, msg_dot
+        mov     ah, 0x09
+        int     0x21
+        mov     al, VERSION_PATCH
         call    print_dec8
 
         ; Print " (" then BUILD_ID as 8 lowercase hex digits, e.g.
-        ; " (ffff0005" - completes the banner to "PFTD v1 (ffff0005"
+        ; " (ffff0005" - completes the banner to "PFTD v0.0.0 (ffff0005"
         mov     dx, msg_build_open
         mov     ah, 0x09
         int     0x21
@@ -249,9 +262,17 @@ install:
         mov     ax, BUILD_ID & 0xFFFF
         call    print_hex32
 
-        ; Close the banner: ") - Installing...\r\n" -> full first line is
-        ; "PFTD v1 (ffff0005) - Installing..."
-        mov     dx, msg_installing
+        ; Close the banner: ")\r\n" -> full line is
+        ; "PFTD v0.0.0 (ffff0005)" - no "Installing..."/"Installed"
+        ; text either side of it (exit code alone - AL=0 below, vs.
+        ; AL=1 on the error paths above - already signals success/
+        ; failure; a silent return to the DOS prompt is enough for a
+        ; human running this interactively). Confirmed on real
+        ; hardware that earlier, longer forms ("PFTD v1 release X.Y.Z
+        ; (XXXXXXXX) - Installing...") wrapped mid-word on this
+        ; hardware's 40-column screen at the extreme 255.255.255
+        ; release version.
+        mov     dx, msg_banner_end
         mov     ah, 0x09
         int     0x21
 
@@ -291,11 +312,10 @@ install:
         int     0x21
         pop     ds
 
-        ; Vector is live - print "Installed" to confirm before we go
-        ; resident (nothing after this point can print anything else).
-        mov     dx, msg_installed
-        mov     ah, 0x09
-        int     0x21
+        ; No "Installed" confirmation message here - the exit code
+        ; (AL=0 below, vs. AL=1 on the error paths above) already
+        ; signals success/failure, and a silent return to the DOS
+        ; prompt is enough for a human running this interactively.
 
         ; Terminate and Stay Resident (DOS AH=0x31): keep everything up to
         ; resident_end (code + hook state + every dispatch_*'s .bss
@@ -329,9 +349,9 @@ install:
         int     0x21
 
 msg_pftd_v        db 'PFTD v$'
+msg_dot           db '.$'
 msg_build_open    db ' ($'
-msg_installing    db ') - Installing...', 13, 10, '$'
-msg_installed     db 'Installed', 13, 10, '$'
+msg_banner_end    db ')', 13, 10, '$'
 msg_not_portfolio db 'This is not an Atari Portfolio.', 13, 10, '$'
 msg_already_resident db 'PFTD is already resident.', 13, 10, '$'
 
