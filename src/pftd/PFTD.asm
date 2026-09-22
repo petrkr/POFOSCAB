@@ -209,7 +209,7 @@ install:
         ; whether it's there (see residentcheck.inc). Only safe to try if
         ; int 0x61 actually points somewhere - on real Portfolio hardware
         ; the ROM always has its own int 0x61 handler installed, but a
-        ; generic PC/DOS (or DOSBox) normally has a NULL vector there,
+        ; generic PC/DOS normally has a NULL vector there,
         ; and calling through a NULL vector hangs/crashes instead of
         ; harmlessly returning. So check the vector segment:offset isn't
         ; 0000:0000 first.

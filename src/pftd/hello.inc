@@ -78,11 +78,9 @@ hello_response_len equ $ - hello_response
 ; AX/CX/DX/DS - pftd_int61_handler's .chain forwards whatever's in those
 ; registers straight to old61 (the real ROM on real hardware), so this
 ; must not leak the transmit call's own DX=hello_response/CX=
-; hello_response_len into that forwarded call. (Found via TESTHELLO in
-; DOSBox: a stray second "transmit" appeared downstream, made of leftover
-; register bytes from here rather than a real second call - see
-; dosbox-test/ - the caller wasn't clobbering CX/DX either, so both sides
-; needed the same discipline.) Answers over the smart cable using the
+; hello_response_len into that forwarded call. A stray second "transmit"
+; can otherwise appear downstream from leftover register bytes; the caller
+; likewise must preserve CX/DX. Answers over the smart cable using the
 ; same AH=0x30 API the ROM itself uses - see PFTD.asm header comment for
 ; why this is safe to do from inside the int 0x61 hook.
 dispatch_hello:

@@ -31,8 +31,7 @@
 ; Ralf Brown's Interrupt List it's a pure DOS-internal variable
 ; read/write (no media access at all, unlike AH=0x32 which RBIL notes
 ; DOES read the disk to build the DPB) and this was confirmed silent
-; on real Portfolio hardware (dosbox-test iteration history:
-; DRIVEDBG.asm in the repo root, now superseded by this file). AH=0x19
+; on real Portfolio hardware. AH=0x19
 ; (Get Current Default Drive) is called first so AH=0x0E can re-select
 ; the SAME drive (DL = that drive) instead of actually changing it -
 ; the standard trick to read the count as a side effect only.

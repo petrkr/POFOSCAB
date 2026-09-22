@@ -102,17 +102,15 @@ viz sekce "PFTD command space (0x80+)" níže:
   není nijak chráněné jen proto, že logicky "patří" k předchozímu kroku.
   Řešení: znovu načíst AL z paměti (`mov al, [cs:payload0]`) těsně před
   KAŽDÝM `call dispatch_*`, nespoléhat na to, že registr "přežije"
-  nesouvisející operace mezi tím. Projevilo se v DOSBoxu jako STUB61
-  logující jen 1 bajt místo skutečné HELLO/LIST odpovědi - obě
-  `dispatch_*` rutiny viděly špatné AL a žádná nesouhlasila.
+  nesouvisející operace mezi tím. Jinak obě `dispatch_*` rutiny mohou
+  vidět špatné AL a žádná nesouhlasí.
 - **`call`/`iret` stack shape mismatch** - subroutina volaná přes `call`
   nesmí sama nikdy dělat `iret` (stack má jen 2 bajty return adresy, ne
   6 bajtů FLAGS/CS/IP, co `iret` čeká) - vždy `ret`, a `iret` dělá až
   volající, hned po `call`, dokud je stack ještě čistý (viz
   `residentcheck.inc`: `check_already_resident` vždy `ret`,
   `pftd_int61_handler` sám dělá `iret` hned po `call`, než cokoliv
-  dalšího pushne). Projevilo se jako "invalid opcode" pád v DOSBoxu při
-  druhém spuštění PFTD (already-resident probe).
+  dalšího pushne).
 - **`shr reg, imm8` (imm8>1) není na CPU 8086 dostupné** - stejné omezení
   jako už zdokumentované `rol reg,imm8`. Řešení: čtyři jednotlivé
   jednobitové posuny za sebou (`shr al,1` ×4), stejně jako
@@ -171,8 +169,7 @@ jsou jediná kombinace, co se ověřila jako tichá (žádné I/O na médium).
 
 ### DIP DOS critical error chování na jednotkách bez média (nalezeno při vývoji DRIVES)
 
-Na reálném Portfolio HW (NE v DOSBoxu - tam tohle vůbec nenastává,
-proto to explorace/testování v DOSBoxu nikdy neodhalilo):
+Na reálném Portfolio HW:
 
 - `int 0x21 AH=0x36` (Get Disk Free Space) na jednotce bez vloženého
   média (např. prázdný card slot `A:`) vypíše `"Insert disk in drive
@@ -208,25 +205,10 @@ proto to explorace/testování v DOSBoxu nikdy neodhalilo):
   0/0xFF sentinel jak by se čekalo, jen `AL` samo rozlišuje platnost
   (`AL=0xFF` neplatná, cokoliv jiného platná) - `AX==0xFFFF` test by
   fungoval jen náhodou.
-- **DOSBox je NEPOUŽITELNÝ pro testování `AH=0x0E`/kontiguity:**
-  DOSBox-X (a obecně DOS 3.0+) implementuje `LASTDRIVE=` konfigurační
-  koncept, který DOS 2.11/DIP DOS nemá - `AH=0x0E`'s count na DOSBoxu
-  reflektuje `lastdrive` config direktivu (nastavitelnou v
-  `dosbox-x*.conf`), NE skutečný počet použitých jednotek. Testováno:
-  DOSBox s mountnutými `C:`/`D:`/`Z:` (nesouvislé, mezera D..Y) vrátilo
-  `AH=0x0E` count=36 (vyšší než abeceda má písmen) - naprosto
-  nesouvisí se skutečnou topologií. Na DOS 2.x/DIP DOS toto
-  `LASTDRIVE`-style chování NEPLATÍ (RBIL: DOS 2.x count = "highest
-  drive actually present", žádná CONFIG.SYS direktiva existuje) - proto
-  reálný HW test byl nutný a DOSBox zde jen mate.
 - **Poučení pro budoucí PFTD příkazy:** kterákoliv DOS funkce
   dokumentovaná jako "I/O-free" nebo s určitým návratovým kontraktem v
   Ralf Brown's Interrupt List (psáno primárně pro PC MS-DOS 3.0+) se NA
-  DIP DOS musí ověřit empiricky na reálném HW, NIKDY jen v DOSBoxu -
-  DOSBox se u minimálně dvou funkcí (`AH=0x32`, `AH=0x0E`) chová jinak
-  než DOS 2.11/DIP DOS, oběma směry (jednou přísněji - critical error
-  kde by nemělo být -, jednou volněji - LASTDRIVE cap, co DOS 2.x
-  nemá).
+  DIP DOS musí ověřit empiricky na reálném HW.
 
 ### MKDIR/DELETE (0x88/0x89) - real-HW test výsledky a CF-ordering bug
 
@@ -481,29 +463,6 @@ ně) bude `AH=0x0E`'s count VŽDY minimálně 3 a VŽDY znamená přesně
 "`A:` až <count>-té písmeno, beze mezer". `pofo-driver/drives.inc`
 nepotřebuje žádný záchranný/ověřovací mechanismus navíc - jednoduchý
 count je definitivně dostačující a spolehlivý.
-
-## DOSBox testovací nástroje (pofo-driver/tests/)
-
-DOSBox nemá nativní `int 0x61` handler (NULL vektor by default), takže
-PFTD tam samo o sobě nejde vyzkoušet end-to-end bez pomocných nástrojů:
-
-- `STUB61.COM` - minimální `int 0x61` handler, co dá PFTD's `.chain`
-  (`jmp far [old61]`) kam přistát, místo NULL vektoru. Na `AX=0x3000`
-  (transmit) loguje odesílané bajty jako hex přes `int 0x10 AH=0x0E`
-  (BIOS teletype, bezpečné volat re-entrantně na rozdíl od `int 0x21`).
-- `THELLO.COM` / `TLISTEXT.COM` - simulují ROM's receive-block handshake
-  (`int 0x61 AX=0x3001` s payload[0]=0x80/0x86 v bufferu, pak libovolné
-  další `int 0x61`), aby vyvolaly PFTD detekci a `dispatch_hello`/
-  `dispatch_list` bez reálného Portfolia nebo klienta na drátě.
-- Co tohle OVĚŘÍ: že PFTD správně detekuje payload[0] a zavolá správný
-  dispatcher bez zaseknutí/pádu, a (díky STUB61 logu) i přesné bajty
-  odpovědi. Co NEOVĚŘÍ: chování na reálném Portfolio hardwaru (HW
-  detekce je v DOSBoxu vypnutá přes `CHECK_POFO=0` build) - to
-  potřebuje skutečný Portfolio a reálného klienta na kabelu.
-- Použití v DOSBoxu: `pofo-driver/loadtest.bat` nahodí `STUB61` a
-  `PFTDN` (CHECK_POFO=0 build) jedním příkazem; samotný test nástroj
-  (`TESTS\THELLO.COM` / `TESTS\TLISTEXT.COM`) se pak spouští ručně podle
-  toho, co se zrovna testuje.
 
 ## Nástroje (historické - objevovací fáze před PFTD)
 

@@ -29,7 +29,7 @@ PROBE_ANSWER equ 0x4650        ; 'F','P' - answered directly in AX, no cable I/O
 ; the 6-byte FLAGS/CS/IP frame IRET expects - doing so here previously
 ; popped the call's own return address as if it were IP/CS/FLAGS and
 ; jumped into garbage (observed on real hardware as int 6 - invalid
-; opcode - the second time PFTD was run in DOSBox).
+; opcode on a subsequent PFTD run).
 ; If AX != PROBE_CMD, ZF is clear on return and pftd_int61_handler
 ; continues normally.
 check_already_resident:
