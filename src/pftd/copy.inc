@@ -137,13 +137,19 @@ dispatch_copy:
         ; Portfolio storage/transfer sizes fit comfortably, and losing
         ; precision above 64K only blurs the displayed percentage, it
         ; never affects the actual copy loop below) and reset the
-        ; running byte counter. ensure_gui_drawn is idempotent - safe
-        ; to call unconditionally regardless of what else has or
-        ; hasn't drawn the GUI yet this session (see gui.inc header).
+        ; running byte counter. Deliberately does NOT call
+        ; ensure_gui_drawn here - HELLO already guarantees the border
+        ; exists before any real client sends a second command (see
+        ; hello.inc), and calling it again here, mid-DOS-call-sequence
+        ; (between Find First above and Open File below), hung the
+        ; whole transfer on real hardware - its int 0x10 AH=0x06 full-
+        ; screen clear apparently doesn't coexist safely with DOS
+        ; mid-file-op state the way it does when called standalone
+        ; from dispatch_hello. gui_progress alone (below) is safe here
+        ; since it never touches AH=0x06, only AH=0x02/0x09.
         mov     ax, [dta_buf+0x1A]
         mov     [copy_total_size], ax
         mov     word [copy_bytes_done], 0
-        call    ensure_gui_drawn
 
         ; Open source, read-only.
         mov     byte [cs:critical_error_flag], 0

@@ -118,6 +118,16 @@ ensure_gui_drawn:
         ; already (so VERSION_MAJOR/MINOR/PATCH and BUILD_ID are
         ; defined by the time PFTD.asm reaches this file's %include -
         ; see PFTD.asm's include order).
+        cld                             ; stosb below must go forward -
+                                         ; DF is not guaranteed clear on
+                                         ; entry (found the hard way: a
+                                         ; set DF here silently corrupts
+                                         ; memory past gui_row0_buf/
+                                         ; gui_progress_buf instead of
+                                         ; filling them, since stosb
+                                         ; walks backward when DF=1 -
+                                         ; see project memory "pftd
+                                         ; screen log idea")
         mov     di, gui_row0_buf
         mov     al, 0xDA
         stosb
@@ -337,6 +347,8 @@ gui_print:
 gui_print_si:
         push    cx
         push    dx
+        cld                     ; lodsb below must go forward - see
+                                 ; ensure_gui_drawn's cld comment
         mov     ah, 0x03        ; get current cursor position (row,col)
         mov     bh, 0
         int     0x10            ; -> dh=row, dl=col
@@ -373,13 +385,24 @@ gui_print_si:
 ; left/right border column and one space of padding each side), filled
 ; with 0xDB (solid block) up to the percentage, 0xB0 (light shade) for
 ; the remainder. Preserves AX/BX/CX/DX/SI/DS/ES.
-GUI_BAR_WIDTH equ GUI_COLS-4
+; -2, not -3: the bar starts at col=1 with no left padding (fill
+; begins immediately, right up against the screen's own left border
+; at col=0 - confirmed on real hardware this reads fine, no visual
+; collision with that border character). gui_print_si CAN write at
+; col 39 (the last safe column) but stops before col 40, so at most
+; 39 characters fit starting from col=1 (cols 1..39).
+; fill(GUI_BAR_WIDTH) + space(1) = GUI_BAR_WIDTH+1 must be <= 39, so
+; GUI_BAR_WIDTH <= 38 - GUI_COLS-2 (38) fits exactly.
+GUI_BAR_WIDTH equ GUI_COLS-2
 
 ; Builds the bar into gui_progress_buf first, then prints it via
 ; gui_print_si in one go - see gui_print_si's own header comment for
 ; why direct AH=0x0E teletype calls are unsafe for anything that can
-; land on column 39 (this bar's right border character always does:
-; col 1 + 1 + 1 + GUI_BAR_WIDTH + 1 = GUI_COLS-1 = 39).
+; land on column 39. No border characters of its own (just padding
+; spaces) - it prints starting at col=1, inside ensure_gui_drawn's
+; own screen-wide border (0xB3 at col=0 and col=39), so a border
+; character here would just duplicate the screen border right next to
+; it - confirmed visually on real hardware as a redundant "||".
 gui_progress:
         push    ax
         push    bx
@@ -394,6 +417,9 @@ gui_progress:
         pop     ds
         push    cs
         pop     es
+        cld                             ; stosb below must go forward -
+                                         ; see ensure_gui_drawn's cld
+                                         ; comment for why this matters
 
         cmp     al, 100
         jbe     .clamped
@@ -405,14 +431,19 @@ gui_progress:
         mul     bx              ; dx:ax = al * GUI_BAR_WIDTH
         mov     bx, 100
         div     bx              ; ax = filled count, dx = remainder (unused)
+        mov     [gui_progress_filled], ax  ; stashed to memory - AX
+                                 ; itself gets clobbered below by
+                                 ; 'mov al, 0xDB' (found the hard way:
+                                 ; that silently turns the "ax still
+                                 ; holds filled count" assumption false,
+                                 ; underflowing the subtraction below
+                                 ; into a ~65000-iteration stosb loop
+                                 ; that stomped memory well past this
+                                 ; 41-byte buffer - see project memory
+                                 ; "pftd screen log idea")
         mov     cx, ax          ; cx = filled count
 
         mov     di, gui_progress_buf
-        mov     al, 0xB3        ; left border char
-        stosb
-        mov     al, ' '
-        stosb
-
         mov     al, 0xDB        ; solid block, filled portion
 .fill_loop:
         cmp     cx, 0
@@ -423,9 +454,7 @@ gui_progress:
 
 .empty_setup:
         mov     cx, GUI_BAR_WIDTH
-        sub     cx, ax          ; ax still holds the filled count from
-                                 ; the div above (stosb doesn't touch
-                                 ; ax, only di) - remaining = width-filled
+        sub     cx, [gui_progress_filled]
 .empty_loop2:
         cmp     cx, 0
         je      .end_bar
@@ -435,10 +464,11 @@ gui_progress:
         jmp     .empty_loop2
 
 .end_bar:
-        mov     al, ' '
-        stosb
-        mov     al, 0xB3        ; right border char
-        stosb
+        ; No right padding: with GUI_BAR_WIDTH=GUI_COLS-1, the fill
+        ; ends exactly at col 39 - the outer screen border's own right
+        ; 0xB3 (drawn by ensure_gui_drawn) - so a trailing space here
+        ; would silently overwrite that border character (confirmed
+        ; on real hardware: the right border was getting erased).
         mov     al, 0
         stosb
 
@@ -464,6 +494,7 @@ section .bss
 
 gui_progress_buf:     resb GUI_COLS+1  ; built bar string, NUL-terminated
 gui_row0_buf:         resb GUI_COLS+1  ; built row-0 title string, same
+gui_progress_filled:  resw 1           ; see gui_progress's own comment
 
 section .text
 
