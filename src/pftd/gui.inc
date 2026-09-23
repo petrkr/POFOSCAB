@@ -11,10 +11,8 @@
 ; leaving Setup entirely, back to the DOS prompt, does a full-screen
 ; redraw that clears them, so nothing here needs its own cleanup path.
 ;
-; Layout: a full-screen box border (CP437 box-drawing - confirmed on
-; real hardware to render correctly here despite this not being a
-; standard IBM CP437 font, see project memory) drawn once per Setup
-; session via ensure_gui_drawn:
+; Layout: a full-screen box border drawn by the Portfolio's native
+; int 0x60/AH=0x09 draw-box service, plus a title in its top edge:
 ;   row 0: top border, "PFTD vX build XXXXXXXX" inset into it
 ;   row 1: side borders only, interior left blank (reserved for later)
 ;   rows 2-4: side borders only - interior is the ROM's own "Waiting
@@ -51,7 +49,6 @@
 %include "build_id.inc"
 %include "version.inc"
 
-GUI_ROW_TOP    equ 5
 GUI_ROW_MID    equ 6
 GUI_ROW_BOTTOM equ 7
 GUI_COLS       equ 40
@@ -109,15 +106,15 @@ ensure_gui_drawn:
         mov     dl, GUI_COLS-1
         int     0x10
 
-        ; Row 0: build "<0xDA><0xC4> PFTD vX.Y.Z (XXXXXXXX)<0xC4>...<0xBF>"
-        ; into gui_row0_buf, filling to GUI_COLS-1 chars (leaves the
-        ; trailing NUL) before printing. Version leads (the human-
-        ; facing identity: 0.0.0 on an ordinary dev build, the real
-        ; tag version on a release build - see version.inc), build
-        ; hash trails in parens - both %include'd via hello.inc
-        ; already (so VERSION_MAJOR/MINOR/PATCH and BUILD_ID are
-        ; defined by the time PFTD.asm reaches this file's %include -
-        ; see PFTD.asm's include order).
+        ; AX=0900h, BX=0000h, CX=bottom-right (row,col), DX=top-left.
+        ; This is the draw-box call used by PFTCMENU.
+        mov     ax, 0x0900
+        xor     bx, bx
+        mov     cx, (GUI_ROW_BOTTOM << 8) | (GUI_COLS-1)
+        xor     dx, dx
+        int     0x60
+
+        ; Build the title for row 0. Version leads; build hash trails.
         cld                             ; stosb below must go forward -
                                          ; DF is not guaranteed clear on
                                          ; entry (found the hard way: a
@@ -129,10 +126,6 @@ ensure_gui_drawn:
                                          ; see project memory "pftd
                                          ; screen log idea")
         mov     di, gui_row0_buf
-        mov     al, 0xDA
-        stosb
-        mov     al, 0xC4
-        stosb
         mov     si, gui_title_text
         call    .append_si
 
@@ -155,77 +148,15 @@ ensure_gui_drawn:
         call    .append_hex16
         mov     al, ')'
         stosb
-
-.row0_pad:
-        ; di currently points past the last content byte written above
-        ; (compare to gui_row0_buf, not a fixed literal - the title/hex
-        ; text length is fixed at assembly time via gui_title_text, but
-        ; keeping this relative avoids silently mis-padding if that
-        ; string is ever edited without updating a hardcoded count).
-        mov     ax, di
-        sub     ax, gui_row0_buf
-        cmp     ax, GUI_COLS-1
-        jae     .row0_close
-        mov     al, 0xC4
-        stosb
-        jmp     .row0_pad
-.row0_close:
-        mov     al, 0xBF
-        stosb
         mov     al, 0
         stosb
 
         mov     ah, 0x02
         mov     bh, 0
         mov     dh, 0
-        mov     dl, 0
+        mov     dl, 2
         int     0x10
         mov     si, gui_row0_buf
-        call    gui_print_si
-
-        ; Rows 1-6: side borders only, interior untouched (row 1 blank,
-        ; rows 2-4 are the ROM's own box, row 5 is free for gui_print
-        ; status text, row 6 gets overwritten by gui_progress's own
-        ; border chars whenever that's called - drawing plain side
-        ; borders here too keeps row 6 looking consistent even before
-        ; the first gui_progress call happens).
-        mov     cx, 6
-        mov     dh, 1
-.side_rows:
-        push    cx
-        mov     ah, 0x02
-        mov     bh, 0
-        mov     dl, 0
-        int     0x10
-        mov     al, 0xB3
-        mov     ah, 0x09
-        mov     bh, 0
-        mov     bl, 0x07
-        mov     cx, 1
-        int     0x10
-
-        mov     ah, 0x02
-        mov     bh, 0
-        mov     dl, GUI_COLS-1
-        int     0x10
-        mov     al, 0xB3
-        mov     ah, 0x09
-        mov     bh, 0
-        mov     bl, 0x07
-        mov     cx, 1
-        int     0x10
-
-        pop     cx
-        inc     dh
-        loop    .side_rows
-
-        ; Row 7: bottom border.
-        mov     ah, 0x02
-        mov     bh, 0
-        mov     dh, GUI_ROW_BOTTOM
-        mov     dl, 0
-        int     0x10
-        mov     si, gui_border_bottom
         call    gui_print_si
 
 .done:
@@ -493,20 +424,10 @@ gui_progress:
 section .bss
 
 gui_progress_buf:     resb GUI_COLS+1  ; built bar string, NUL-terminated
-gui_row0_buf:         resb GUI_COLS+1  ; built row-0 title string, same
+gui_row0_buf:         resb GUI_COLS+1  ; built title string, NUL-terminated
 gui_progress_filled:  resw 1           ; see gui_progress's own comment
 
 section .text
-
-; CP437 box-drawing: 0xC0 bottom-left, 0xD9 bottom-right, 0xC4
-; horizontal, 0xB3 vertical, 0xDA/0xBF top corners (used inline by
-; ensure_gui_drawn above while building gui_row0_buf, not through a
-; static table - row 0's content is built dynamically to fit the
-; version/build-id text).
-gui_border_bottom:
-        db      0xC0
-        times (GUI_COLS-2) db 0xC4
-        db      0xD9, 0
 
 gui_title_text: db ' PFTD v', 0
 gui_build_text: db ' (', 0
