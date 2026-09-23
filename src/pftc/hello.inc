@@ -12,10 +12,11 @@ hello_request: db PFTC_HELLO
 hello_request_len equ $ - hello_request
 
 ; Result of the last do_hello call.
-hello_ok:      db 0            ; non-zero on success
-hello_major:   db 0
-hello_minor:   db 0
-hello_patch:   db 0
+hello_ok:       db 0            ; non-zero on success
+hello_major:    db 0
+hello_minor:    db 0
+hello_patch:    db 0
+hello_build_id: dd 0            ; server's build id, binary LE (offset 6-9)
 
 ; Sends HELLO and parses the response.
 ; Returns: carry clear and hello_ok<>0 on a well-formed "PFC1" ack,
@@ -56,6 +57,11 @@ do_hello:
         mov     al, [es:di+5]
         cmp     al, '1'
         jne     .bad
+
+        mov     ax, [es:di+6]
+        mov     [cs:hello_build_id], ax
+        mov     ax, [es:di+8]
+        mov     [cs:hello_build_id+2], ax
 
         mov     al, [es:di+10]
         mov     [cs:hello_major], al

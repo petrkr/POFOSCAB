@@ -81,23 +81,23 @@ draw_frame:
                                          ; own cld comment
         mov     di, frame_title_buf
         mov     si, frame_title_text
-        call    .append_si
+        call    frame_append_si
         mov     al, VERSION_MAJOR
-        call    .append_dec8
+        call    frame_append_dec8
         mov     al, '.'
         stosb
         mov     al, VERSION_MINOR
-        call    .append_dec8
+        call    frame_append_dec8
         mov     al, '.'
         stosb
         mov     al, VERSION_PATCH
-        call    .append_dec8
+        call    frame_append_dec8
         mov     si, frame_build_text
-        call    .append_si
+        call    frame_append_si
         mov     ax, BUILD_ID >> 16
-        call    .append_hex16
+        call    frame_append_hex16
         mov     ax, BUILD_ID & 0xFFFF
-        call    .append_hex16
+        call    frame_append_hex16
         mov     al, ')'
         stosb
         mov     al, ' '
@@ -123,26 +123,28 @@ draw_frame:
         pop     ax
         ret
 
-; .append_si: append ASCIIZ string at DS:SI to DS:DI (di advances past
-; the copied bytes, NOT including a NUL). Local to draw_frame, same as
-; src/pftd/gui.inc's own .append_si. Clobbers AX/SI/DI.
-.append_si:
+; frame_append_si: append ASCIIZ string at DS:SI to DS:DI (di advances
+; past the copied bytes, NOT including a NUL). Same as src/pftd/gui.inc's
+; own .append_si, but a global label here (not local to draw_frame) so
+; set_status/other callers building their own buffers can reuse it too.
+; Clobbers AX/SI/DI.
+frame_append_si:
         lodsb
         cmp     al, 0
-        je      .append_si_ret
+        je      .ret
         stosb
-        jmp     .append_si
-.append_si_ret:
+        jmp     frame_append_si
+.ret:
         ret
 
-; .append_hex16: append AX as 4 lowercase hex digits to DS:DI. Local
-; to draw_frame, same as src/pftd/gui.inc's own .append_hex16.
+; frame_append_hex16: append AX as 4 lowercase hex digits to DS:DI.
+; Same as src/pftd/gui.inc's own .append_hex16, global here for reuse.
 ; Clobbers AX/BX/CX/DI.
-.append_hex16:
+frame_append_hex16:
         push    dx
         mov     dx, ax
         mov     cx, 4
-.append_hex16_digit:
+.digit:
         rol     dx, 1
         rol     dx, 1
         rol     dx, 1
@@ -153,30 +155,30 @@ draw_frame:
         mov     bx, ax
         mov     al, [cs:frame_hexdig+bx]
         stosb
-        loop    .append_hex16_digit
+        loop    .digit
         pop     dx
         ret
 
-; .append_dec8: append AL (0-255) as decimal, no leading zeros, to
-; DS:DI. Local to draw_frame, same algorithm as src/pftd/gui.inc's own
-; .append_dec8. Clobbers AX/BX/CX/DX/DI.
-.append_dec8:
+; frame_append_dec8: append AL (0-255) as decimal, no leading zeros, to
+; DS:DI. Same algorithm as src/pftd/gui.inc's own .append_dec8, global
+; here for reuse. Clobbers AX/BX/CX/DX/DI.
+frame_append_dec8:
         xor     ah, ah
         mov     bx, 10
         xor     cx, cx
-.append_dec8_divide:
+.divide:
         xor     dx, dx
         div     bx
         push    dx
         inc     cx
         cmp     ax, 0
-        jne     .append_dec8_divide
-.append_dec8_print:
+        jne     .divide
+.print:
         pop     dx
         mov     al, dl
         add     al, '0'
         stosb
-        loop    .append_dec8_print
+        loop    .print
         ret
 
 ; DS:SI = ASCIIZ status text, with DS=CS (same convention as

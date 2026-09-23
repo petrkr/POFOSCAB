@@ -55,7 +55,10 @@ start:
         push    cs
         pop     ds
         mov     si, status_connecting
-        call    set_status
+        call    set_status              ; short: "Connecting" (no ellipsis
+                                         ; needed - the "Connecting..."
+                                         ; dialog above already spells
+                                         ; out what's happening)
 
         mov     ax, 0x3002              ; AH=30h AL=2: open ports
         int     0x61
@@ -82,11 +85,21 @@ start:
         cmp     byte [cs:hello_ok], 0
         je      .offline
 
-        mov     si, status_connected
+        call    build_connected_status
+        mov     si, status_buf
         call    set_status
         jmp     .wait
 
 .offline:
+        ; show_error (AH=14h) blocks until a keypress and erases
+        ; itself - nothing to restore here, unlike show_message/AH=12h.
+        push    cs
+        pop     ds
+        mov     si, msg_offline
+        call    show_error
+
+        push    cs
+        pop     ds
         mov     si, status_offline
         call    set_status
         ; A later iteration adds an F5/menu reconnect action here
@@ -108,10 +121,64 @@ start:
         mov     ax, 0x4c00
         int     0x21
 
+; Builds "Connected vX.Y.Z (buildid)" into status_buf from the
+; server's HELLO response (hello_major/minor/patch/build_id -
+; hello.inc) - the SERVER's identity, distinct from PFTC's own
+; version/build shown in the frame's title (draw_frame, PFTC's own
+; version.inc/build_id.inc). Worst case ("v255.255.255 (ffffffff)")
+; is 33 characters, fits within the ~36 usable columns set_status
+; allows.
+build_connected_status:
+        push    ax
+        push    di
+        push    si
+        push    ds
+        push    es
+
+        push    cs
+        pop     ds
+        push    cs
+        pop     es
+        cld
+
+        mov     di, status_buf
+        mov     si, status_connected_prefix
+        call    frame_append_si
+        mov     al, [cs:hello_major]
+        call    frame_append_dec8
+        mov     al, '.'
+        stosb
+        mov     al, [cs:hello_minor]
+        call    frame_append_dec8
+        mov     al, '.'
+        stosb
+        mov     al, [cs:hello_patch]
+        call    frame_append_dec8
+        mov     si, status_build_prefix
+        call    frame_append_si
+        mov     ax, [cs:hello_build_id+2]
+        call    frame_append_hex16
+        mov     ax, [cs:hello_build_id]
+        call    frame_append_hex16
+        mov     al, ')'
+        stosb
+        mov     al, 0
+        stosb
+
+        pop     es
+        pop     ds
+        pop     si
+        pop     di
+        pop     ax
+        ret
+
 msg_connecting:    db "Connecting", 0, "Talking to SmartCable...", 0, 0
-status_connecting: db "Status: Connecting...", 0
-status_connected:  db "Status: Connected", 0
-status_offline:    db "Status: Offline", 0
+msg_offline:       db "SmartCable: offline", 0, "No response from bridge.", 0, 0
+status_connecting: db "Connecting", 0
+status_offline:    db "Offline", 0
+status_connected_prefix: db "Connected v", 0
+status_build_prefix:     db " (", 0
+status_buf:        times 40 db 0
 dialog_seg:        dw 0
 app_screen_seg:    dw 0
 hello_failed:      db 0
