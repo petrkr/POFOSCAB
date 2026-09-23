@@ -1,8 +1,10 @@
-.PHONY: all pftd upload clean
+.PHONY: all pftd pftc upload upload-pftc clean
 
 BUILD_DIR := build
 PFTD_SRC := src/pftd/PFTD.asm
 PFTD_BIN := $(BUILD_DIR)/PFTD.COM
+PFTC_SRC := src/pftc/PFTC.asm
+PFTC_BIN := $(BUILD_DIR)/PFTC.COM
 
 NASM ?= nasm
 
@@ -16,17 +18,23 @@ PORT ?= 9000
 # set one here; override as e.g. make upload DEST_DIR='D:\SOMEDIR\'.
 DEST_DIR ?=
 
-all: pftd
+all: pftd pftc
 
 pftd: $(PFTD_BIN)
+
+pftc: $(PFTC_BIN)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
 PFTD_INC := $(wildcard src/pftd/*.inc)
+PFTC_INC := $(wildcard src/pftc/*.inc)
 
 $(PFTD_BIN): $(PFTD_SRC) $(PFTD_INC) | $(BUILD_DIR)
 	$(NASM) -f bin -i src/pftd/ -o $@ $<
+
+$(PFTC_BIN): $(PFTC_SRC) $(PFTC_INC) | $(BUILD_DIR)
+	$(NASM) -f bin -i src/pftc/ -o $@ $<
 
 # Assumes the bridge (or ESP smart-cable client) is already running at
 # HOST:PORT and the Portfolio is sitting in File Transfer Server mode.
@@ -40,6 +48,13 @@ DEST_DIR_ENC = $(subst \,%5C,$(DEST_DIR))
 
 upload: $(PFTD_BIN)
 	curl -sf -F "file=@$(PFTD_BIN)" \
+		"http://$(HOST):$(PORT)/upload$(if $(DEST_DIR),?destDir=$(DEST_DIR_ENC))"
+
+# Same bridge /upload endpoint as `upload`, just for PFTC.COM - getting
+# the binary onto the memory card is the same mechanism regardless of
+# which wire protocol the program itself speaks once running.
+upload-pftc: $(PFTC_BIN)
+	curl -sf -F "file=@$(PFTC_BIN)" \
 		"http://$(HOST):$(PORT)/upload$(if $(DEST_DIR),?destDir=$(DEST_DIR_ENC))"
 
 clean:
