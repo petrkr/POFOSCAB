@@ -21,5 +21,5 @@
 ; doesn't provide.
 
 VERSION_MAJOR equ 0
-VERSION_MINOR equ 0
+VERSION_MINOR equ 1
 VERSION_PATCH equ 0
