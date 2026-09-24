@@ -38,4 +38,19 @@ unsigned int pofo_dialog_extent();
 void pofo_screen_save();
 void pofo_screen_restore();
 
+/* text is title\0item1\0...\0\0; top_left uses POFO_COORD(). defaults may
+   be 0 (no defaults text). Returns bytes needed for a pofo_screen_save
+   buffer covering the menu; *bottom_right_out gets the menu's
+   bottom_right (POFO_COORD()). No hierarchy/nesting logic - this is one
+   menu, one call; see ccode/pftc.c for the submenu stack built on top. */
+unsigned int pofo_menu_getsize();
+/* type_depth: AL bits 0-2 = POFO_BOX_SINGLE/POFO_BOX_DOUBLE, bits 3-7 =
+   visible-height limit in rows including borders (0 = no limit; always
+   set one on the native 40x8 display, see INT60H.md). Blocks until ESC
+   or an item is picked; returns -1 on ESC, else POFO_COORD(top_line,
+   selected_item). Leaves the menu box on screen (single-line) afterward
+   - caller must pofo_screen_save/restore around this, same as
+   pofo_message_dialog. */
+int pofo_menu_show();
+
 #endif
