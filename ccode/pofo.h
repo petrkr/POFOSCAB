@@ -7,6 +7,12 @@
 #define POFO_COORD_ROW(coord) ((unsigned char)((coord) >> 8))
 #define POFO_COORD_COL(coord) ((unsigned char)((coord) & 0xff))
 
+/* Bytes needed for a pofo_screen_save/restore buffer covering this
+   inclusive top_left..bottom_right range (1 byte per cell). */
+#define POFO_SCREEN_SIZE(top_left, bottom_right) \
+    ((unsigned int)(POFO_COORD_COL(bottom_right) - POFO_COORD_COL(top_left) + 1) * \
+     (unsigned int)(POFO_COORD_ROW(bottom_right) - POFO_COORD_ROW(top_left) + 1))
+
 #define POFO_BOX_SINGLE 0
 #define POFO_BOX_DOUBLE 1
 
@@ -21,7 +27,10 @@ void pofo_draw_box_ex();
 void pofo_message_dialog();
 void pofo_error_dialog();
 
-/* top_left/bottom_right use POFO_COORD(); bottom_right is inclusive. */
+/* top_left/bottom_right use POFO_COORD(), inclusive. buffer is caller-owned
+   (static or malloc'd, at least POFO_SCREEN_SIZE(top_left, bottom_right)
+   bytes) and must be passed to both calls; freeing it (if malloc'd) is the
+   caller's responsibility once it's no longer needed. */
 void pofo_screen_save();
 void pofo_screen_restore();
 

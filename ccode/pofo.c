@@ -1,6 +1,4 @@
 #include "pofo.h"
-#include <malloc.h>
-#include <string.h>
 
 //  Pofo box
 static unsigned char pofo_box_style;
@@ -16,7 +14,6 @@ static char *pofo_dialog_text;
 // Pofo screen
 static unsigned int pofo_screen_top_left;
 static unsigned int pofo_screen_bottom_right;
-static unsigned int pofo_screen_buffer_size;
 static unsigned char *pofo_screen_buffer;
 
 void pofo_clear_screen()
@@ -151,20 +148,16 @@ int gotoxy(x, y)
 #endasm
 }
 
-void pofo_screen_save(top_left, bottom_right)
+/* buffer must be at least POFO_SCREEN_SIZE(top_left, bottom_right) bytes;
+   caller owns it (static or malloc'd) and is responsible for freeing it. */
+void pofo_screen_save(top_left, bottom_right, buffer)
 unsigned int top_left;
 unsigned int bottom_right;
+unsigned char *buffer;
 {
-    unsigned char cols, rows;
-
     pofo_screen_top_left = top_left;
     pofo_screen_bottom_right = bottom_right;
-
-    cols = POFO_COORD_COL(bottom_right) - POFO_COORD_COL(top_left) + 1;
-    rows = POFO_COORD_ROW(bottom_right) - POFO_COORD_ROW(top_left) + 1;
-
-    pofo_screen_buffer_size = (unsigned int)cols * rows;
-    pofo_screen_buffer = (unsigned char *)malloc(pofo_screen_buffer_size);
+    pofo_screen_buffer = buffer;
 
 #asm
     mov cx,_pofo_screen_bottom_right
@@ -176,8 +169,15 @@ unsigned int bottom_right;
 #endasm
 }
 
-void pofo_screen_restore()
+void pofo_screen_restore(top_left, bottom_right, buffer)
+unsigned int top_left;
+unsigned int bottom_right;
+unsigned char *buffer;
 {
+    pofo_screen_top_left = top_left;
+    pofo_screen_bottom_right = bottom_right;
+    pofo_screen_buffer = buffer;
+
 #asm
     mov cx,_pofo_screen_bottom_right
     mov dx,_pofo_screen_top_left
@@ -186,7 +186,4 @@ void pofo_screen_restore()
     mov si,_pofo_screen_buffer
     int $60
 #endasm
-
-    memset(pofo_screen_buffer, 0, pofo_screen_buffer_size);
-    free(pofo_screen_buffer);
 }
