@@ -4,6 +4,9 @@ static unsigned char pofo_box_style;
 static unsigned char pofo_box_page;
 static unsigned int pofo_box_top;
 static unsigned int pofo_box_bottom;
+static unsigned int pofo_dialog_top_left;
+static char *pofo_dialog_text;
+static unsigned int pofo_dialog_action;
 
 void pofo_clear_screen()
 {
@@ -21,6 +24,20 @@ void pofo_clear_screen()
     pop dx
     pop cx
     pop bx
+    pop ax
+#endasm
+}
+
+void pofo_hide_cursor()
+{
+#asm
+    push ax
+    push cx
+    mov ah,#$01
+    mov ch,#$20
+    xor cl,cl
+    int $10
+    pop cx
     pop ax
 #endasm
 }
@@ -59,6 +76,46 @@ unsigned int page;
     pop bx
     pop ax
 #endasm
+}
+
+static void pofo_dialog_call(action, top_left, text)
+unsigned int action;
+unsigned int top_left;
+char *text;
+{
+    pofo_dialog_action = action;
+    pofo_dialog_top_left = top_left;
+    pofo_dialog_text = text;
+
+#asm
+    push ax
+    push bx
+    push dx
+    push si
+    mov ax,_pofo_dialog_action
+    xor bx,bx
+    mov dx,_pofo_dialog_top_left
+    mov si,_pofo_dialog_text
+    int 0x60
+    pop si
+    pop dx
+    pop bx
+    pop ax
+#endasm
+}
+
+void pofo_message_dialog(top_left, text)
+unsigned int top_left;
+char *text;
+{
+    pofo_dialog_call(0x1200, top_left, text);
+}
+
+void pofo_error_dialog(top_left, text)
+unsigned int top_left;
+char *text;
+{
+    pofo_dialog_call(0x1400, top_left, text);
 }
 
 /* Export the upstream BCC gotoxy() implementation. */
