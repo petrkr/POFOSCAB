@@ -26,6 +26,10 @@ void pofo_draw_box_ex();
 /* text is title\0body\0\0; top_left uses POFO_COORD(). */
 void pofo_message_dialog();
 void pofo_error_dialog();
+/* Returns bottom_right (POFO_COORD()) of the box a message/error dialog
+   with this top_left/text would draw - use with pofo_screen_save/restore
+   to snapshot exactly the area the dialog covers before showing it. */
+unsigned int pofo_dialog_extent();
 
 /* top_left/bottom_right use POFO_COORD(), inclusive. buffer is caller-owned
    (static or malloc'd, at least POFO_SCREEN_SIZE(top_left, bottom_right)

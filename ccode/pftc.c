@@ -23,6 +23,12 @@ static char status_text[40];
 #define STATUS_BOTTOM_RIGHT POFO_COORD(7, 39)
 static unsigned char status_screen_buffer[POFO_SCREEN_SIZE(STATUS_TOP_LEFT, STATUS_BOTTOM_RIGHT)];
 
+/* Only pofo_message_dialog (AH=12h) needs manual save/restore - the ROM
+   erases pofo_error_dialog (AH=14h) itself on keypress. Sized for the
+   widest/tallest message dialog actually shown (connecting_dialog). */
+#define DIALOG_TOP_LEFT POFO_COORD(2, 2)
+static unsigned char dialog_screen_buffer[POFO_SCREEN_SIZE(DIALOG_TOP_LEFT, POFO_COORD(5, 27))];
+
 static status_set(text)
 char *text;
 {
@@ -118,10 +124,18 @@ int main()
     fflush(stdout);
     pofo_hide_cursor();
     status_set("Connecting");
-    pofo_message_dialog(POFO_COORD(2, 2), connecting_dialog);
+    pofo_screen_save(DIALOG_TOP_LEFT,
+                      pofo_dialog_extent(DIALOG_TOP_LEFT, connecting_dialog),
+                      dialog_screen_buffer);
+    pofo_message_dialog(DIALOG_TOP_LEFT, connecting_dialog);
 
     status = smartcable_exchange(hello_request, sizeof(hello_request),
                            response, sizeof(response), &received);
+
+    pofo_screen_restore(DIALOG_TOP_LEFT,
+                         pofo_dialog_extent(DIALOG_TOP_LEFT, connecting_dialog),
+                         dialog_screen_buffer);
+
     if (status != 0) {
         show_transport_error();
         return wait_and_exit(status);
