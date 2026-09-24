@@ -48,8 +48,10 @@ class NetifSlot:
     complete GET_NETIF response body (status+error code are NOT
     included - the caller prepends those): common header (interface/
     type/enabled/connection state/IPv4/netmask prefix/gateway/DNS)
-    followed by the type-specific section (SSID/channel/RSSI for
-    type=0x01; a future type would need its own to_bytes branch here).
+    followed by the type-specific section (channel/RSSI/SSID for
+    type=0x01 - the fixed-size fields come first so the client can read
+    them at a constant offset without first parsing the variable-length
+    SSID; a future type would need its own to_bytes branch here).
     """
 
     def __init__(
@@ -92,8 +94,8 @@ class NetifSlot:
 
         if self.type == TYPE_WIFI_CLIENT:
             ssid_bytes = self.ssid.encode("ascii")
-            type_section = bytes((len(ssid_bytes),)) + ssid_bytes
-            type_section += struct.pack("<Bb", self.channel, self.rssi)
+            type_section = struct.pack("<Bb", self.channel, self.rssi)
+            type_section += bytes((len(ssid_bytes),)) + ssid_bytes
         else:
             type_section = b""
 
