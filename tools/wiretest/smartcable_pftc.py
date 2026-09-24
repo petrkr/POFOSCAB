@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Mock server for the Portfolio File Transfer Configuration client.
 
-Iteration 0.0: only HELLO (0x01) is implemented, returning the 14-byte
-version block PFTC.asm's hello.inc parses. Later iterations add
-GET_NETIFS/GET_NETIF/SET_NETIF/GET_IPCFG/SET_IPCFG/GET_WIFISCAN - see
-the design plan (mame-tu-novy-ukol-lovely-book.md) for their wire
-layouts.
+Implements HELLO (0x01), GET_NETIFS (0x02), and GET_NETIF (0x03) per the
+design plan (mame-tu-novy-ukol-lovely-book.md). SET_NETIF/GET_IPCFG/
+SET_IPCFG/GET_WIFISCAN are not implemented yet. GET_STATUS (0x08) is an
+ESP-wide device status opcode with no designed response shape yet - not
+implemented.
+
+NetifSlot is written MicroPython-portable (no dataclasses, no typing
+imports used at runtime, only stdlib struct/bytes operations) since the
+same class is meant to run on the ESP side, not just in this test mock.
 """
 
 import argparse
@@ -14,12 +18,103 @@ import struct
 from smartcable_server import SmartCable, receive_atari_block
 
 PFTC_HELLO = 0x01
+PFTC_GET_NETIFS = 0x02
+PFTC_GET_NETIF = 0x03
 
 PFTC_OK = 0x20
+PFTC_ERR = 0x10
 PFTC_ERR_UNKNOWN_COMMAND = 0x01
+PFTC_ERR_MALFORMED = 0x02
 
 MOCK_BUILD_ID = 0xFFFF0000
 MOCK_VERSION = (0, 0, 0)
+
+TYPE_RESERVED = 0x00
+TYPE_WIFI_CLIENT = 0x01
+
+CONN_DISCONNECTED = 0x00
+CONN_CONNECTING = 0x01
+CONN_CONNECTED = 0x02
+
+
+class NetifSlot:
+    """One interface slot (see the design plan's GET_NETIFS/GET_NETIF
+    sections for the exact wire layout this mirrors). `interface` is a
+    stable slot number, `type` is the interface kind (0x01 = WiFi
+    client - the only kind implemented so far).
+
+    to_bytes(full=False) returns just the GET_NETIFS list-entry form
+    (interface/type/enabled, 3 bytes). to_bytes(full=True) returns the
+    complete GET_NETIF response body (status+error code are NOT
+    included - the caller prepends those): common header (interface/
+    type/enabled/connection state/IPv4/netmask prefix/gateway/DNS)
+    followed by the type-specific section (SSID/channel/RSSI for
+    type=0x01; a future type would need its own to_bytes branch here).
+    """
+
+    def __init__(
+        self,
+        interface,
+        type_,
+        enabled,
+        connection_state=CONN_DISCONNECTED,
+        ipv4=(0, 0, 0, 0),
+        netmask_prefix=0,
+        gateway=(0, 0, 0, 0),
+        dns=(0, 0, 0, 0),
+        ssid="",
+        channel=0,
+        rssi=-128,
+    ):
+        self.interface = interface
+        self.type = type_
+        self.enabled = enabled
+        self.connection_state = connection_state
+        self.ipv4 = ipv4
+        self.netmask_prefix = netmask_prefix
+        self.gateway = gateway
+        self.dns = dns
+        self.ssid = ssid
+        self.channel = channel
+        self.rssi = rssi
+
+    def to_bytes(self, full=False):
+        if not full:
+            return bytes((self.interface, self.type, self.enabled))
+
+        common_header = bytes(
+            (self.interface, self.type, self.enabled, self.connection_state)
+        )
+        common_header += bytes(self.ipv4)
+        common_header += bytes((self.netmask_prefix,))
+        common_header += bytes(self.gateway)
+        common_header += bytes(self.dns)
+
+        if self.type == TYPE_WIFI_CLIENT:
+            ssid_bytes = self.ssid.encode("ascii")
+            type_section = bytes((len(ssid_bytes),)) + ssid_bytes
+            type_section += struct.pack("<Bb", self.channel, self.rssi)
+        else:
+            type_section = b""
+
+        return common_header + type_section
+
+
+# Mock state: a single interface slot, interface=0x00, type=0x01 (WiFi
+# client). Static/fake - no real radio.
+mock_netif = NetifSlot(
+    interface=0x00,
+    type_=TYPE_WIFI_CLIENT,
+    enabled=0x01,
+    connection_state=CONN_CONNECTED,
+    ipv4=(192, 168, 1, 42),
+    netmask_prefix=24,
+    gateway=(192, 168, 1, 1),
+    dns=(192, 168, 1, 1),
+    ssid="MockSSID",
+    channel=6,
+    rssi=-45,
+)
 
 
 def build_hello_response() -> bytes:
@@ -35,6 +130,16 @@ def build_hello_response() -> bytes:
         patch,
         0x00,
     )
+
+
+def build_netifs_response() -> bytes:
+    return bytes((PFTC_OK, 0x00, 1)) + mock_netif.to_bytes(full=False)
+
+
+def build_netif_response(interface: int) -> bytes:
+    if interface != mock_netif.interface:
+        return bytes((PFTC_ERR, PFTC_ERR_MALFORMED))
+    return bytes((PFTC_OK, 0x00)) + mock_netif.to_bytes(full=True)
 
 
 def send_block_after_sync(link: SmartCable, payload: bytes) -> bool:
@@ -63,8 +168,17 @@ def handle_packet(payload: bytes) -> bytes:
         print("PFTC HELLO", flush=True)
         return build_hello_response()
 
+    if payload == bytes((PFTC_GET_NETIFS,)):
+        print("PFTC GET_NETIFS", flush=True)
+        return build_netifs_response()
+
+    if len(payload) == 2 and payload[0] == PFTC_GET_NETIF:
+        interface = payload[1]
+        print(f"PFTC GET_NETIF interface={interface}", flush=True)
+        return build_netif_response(interface)
+
     print(f"PFTC unknown opcode: {payload!r}", flush=True)
-    return bytes((0x10, PFTC_ERR_UNKNOWN_COMMAND))
+    return bytes((PFTC_ERR, PFTC_ERR_UNKNOWN_COMMAND))
 
 
 def main():
