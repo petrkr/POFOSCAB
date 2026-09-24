@@ -7,11 +7,39 @@
 #define PFTC_GET_NETIFS  0x02
 #define PFTC_GET_NETIF   0x03
 #define PFTC_WIFI_CLIENT 0x01
+#define PFTC_CTRL_Q      0x1011
 
 static unsigned char hello_request[] = { PFTC_HELLO };
 static unsigned char netifs_request[] = { PFTC_GET_NETIFS };
 static unsigned char netif_request[] = { PFTC_GET_NETIF, 0x00 };
 static unsigned char response[64];
+static char connecting_dialog[] = "Connecting\0Talking to SmartCable...\0\0";
+static char transport_error_dialog[] =
+    "SmartCable error\0Transport failed.\0\0";
+static char protocol_error_dialog[] =
+    "PFTC error\0Invalid response.\0\0";
+static char status_text[40];
+#define STATUS_TOP_LEFT     POFO_COORD(7, 0)
+#define STATUS_BOTTOM_RIGHT POFO_COORD(7, 39)
+static unsigned char status_screen_buffer[POFO_SCREEN_SIZE(STATUS_TOP_LEFT, STATUS_BOTTOM_RIGHT)];
+
+static status_set(text)
+char *text;
+{
+    pofo_screen_restore(STATUS_TOP_LEFT, STATUS_BOTTOM_RIGHT, status_screen_buffer);
+    gotoxy(2, 7);
+    printf(" %.*s ", 34, text);
+    fflush(stdout);
+}
+
+static wait_and_exit(status)
+int status;
+{
+    while (getch() != PFTC_CTRL_Q)
+        ;
+    pofo_clear_screen();
+    return status;
+}
 
 struct hello_response {
     unsigned char status;
@@ -56,12 +84,16 @@ unsigned char *address;
     printf("%u.%u.%u.%u", address[0], address[1], address[2], address[3]);
 }
 
-static show_transport_error(status)
-int status;
+static show_transport_error()
 {
-    gotoxy(2, 1);
-    printf("Transport error %02X", status);
-    fflush(stdout);
+    status_set("Offline");
+    pofo_error_dialog(POFO_COORD(3, 4), transport_error_dialog);
+}
+
+static show_protocol_error()
+{
+    status_set("Offline");
+    pofo_error_dialog(POFO_COORD(3, 4), protocol_error_dialog);
 }
 
 int main()
@@ -79,69 +111,76 @@ int main()
 
     pofo_clear_screen();
     pofo_draw_box(POFO_COORD(0, 0), POFO_COORD(7, 39));
+    pofo_screen_save(STATUS_TOP_LEFT, STATUS_BOTTOM_RIGHT, status_screen_buffer);
+
     gotoxy(2, 0);
     printf("PFTC");
     fflush(stdout);
-    gotoxy(2, 1);
-    printf("Connecting...");
-    fflush(stdout);
+    pofo_hide_cursor();
+    status_set("Connecting");
+    pofo_message_dialog(POFO_COORD(2, 2), connecting_dialog);
 
     status = smartcable_exchange(hello_request, sizeof(hello_request),
                            response, sizeof(response), &received);
     if (status != 0) {
-        show_transport_error(status);
-        return status;
+        show_transport_error();
+        return wait_and_exit(status);
     }
     if (received < sizeof(struct hello_response)) {
-        puts("Short HELLO response");
-        return 1;
+        show_protocol_error();
+        return wait_and_exit(1);
     }
     hello = (struct hello_response *)response;
     if (hello->error != 0) {
-        printf("HELLO error %02X", hello->error);
-        return 1;
+        show_protocol_error();
+        return wait_and_exit(1);
     }
 
     gotoxy(2, 1);
     printf("Connected v%u.%u.%u", hello->version_major,
            hello->version_minor, hello->version_patch);
     fflush(stdout);
+    sprintf(status_text, "Connected v%u.%u.%u (%02X%02X%02X%02X)",
+            hello->version_major, hello->version_minor, hello->version_patch,
+            hello->build_id[3], hello->build_id[2], hello->build_id[1],
+            hello->build_id[0]);
+    status_set(status_text);
 
     smartcable_wait_500ms();
 
     status = smartcable_exchange(netifs_request, sizeof(netifs_request),
                            response, sizeof(response), &received);
     if (status != 0) {
-        show_transport_error(status);
-        return status;
+        show_transport_error();
+        return wait_and_exit(status);
     }
     if (received < 3) {
-        puts("Short NETIFS response");
-        return 1;
+        show_protocol_error();
+        return wait_and_exit(1);
     }
     netifs = (struct netifs_response *)response;
     entries_size = received - 3;
     if (netifs->error != 0 || netifs->count == 0 ||
         netifs->count > entries_size / sizeof(struct netif_entry)) {
-        puts("No interface data");
-        return 1;
+        show_protocol_error();
+        return wait_and_exit(1);
     }
 
     netif_request[1] = netifs->entries[0].interface;
     status = smartcable_exchange(netif_request, sizeof(netif_request),
                            response, sizeof(response), &received);
     if (status != 0) {
-        show_transport_error(status);
-        return status;
+        show_transport_error();
+        return wait_and_exit(status);
     }
     if (received < sizeof(struct netif_response)) {
-        puts("Short NETIF response");
-        return 1;
+        show_protocol_error();
+        return wait_and_exit(1);
     }
     netif = (struct netif_response *)response;
     if (netif->error != 0) {
-        printf("NETIF error %02X", netif->error);
-        return 1;
+        show_protocol_error();
+        return wait_and_exit(1);
     }
 
     gotoxy(2, 2);
@@ -179,5 +218,5 @@ int main()
            channel);
     fflush(stdout);
 
-    return 0;
+    return wait_and_exit(0);
 }
