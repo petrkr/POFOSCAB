@@ -90,6 +90,29 @@ unsigned char *address;
     printf("%u.%u.%u.%u", address[0], address[1], address[2], address[3]);
 }
 
+#define SIGNAL_BAR_LEVELS 10
+#define SIGNAL_BAR_FULL   0xDB
+#define SIGNAL_BAR_EMPTY  0xB0
+#define SIGNAL_BAR_MIN   -90
+#define SIGNAL_BAR_MAX   -40
+
+static print_signal_bar(rssi)
+int rssi;
+{
+    unsigned char level, filled;
+
+    if (rssi <= SIGNAL_BAR_MIN)
+        filled = 0;
+    else if (rssi >= SIGNAL_BAR_MAX)
+        filled = SIGNAL_BAR_LEVELS;
+    else
+        filled = (unsigned char)((rssi - SIGNAL_BAR_MIN) * SIGNAL_BAR_LEVELS /
+                                  (SIGNAL_BAR_MAX - SIGNAL_BAR_MIN));
+
+    for (level = 0; level < SIGNAL_BAR_LEVELS; level++)
+        putchar((unsigned char)(level < filled ? SIGNAL_BAR_FULL : SIGNAL_BAR_EMPTY));
+}
+
 static show_transport_error()
 {
     status_set("Offline");
@@ -110,6 +133,7 @@ int main()
     unsigned char *wifi;
     unsigned char ssid_length;
     unsigned char channel;
+    int rssi;
     int status;
     struct hello_response *hello;
     struct netifs_response *netifs;
@@ -150,10 +174,6 @@ int main()
         return wait_and_exit(1);
     }
 
-    gotoxy(2, 1);
-    printf("Connected v%u.%u.%u", hello->version_major,
-           hello->version_minor, hello->version_patch);
-    fflush(stdout);
     sprintf(status_text, "Connected v%u.%u.%u (%02X%02X%02X%02X)",
             hello->version_major, hello->version_minor, hello->version_patch,
             hello->build_id[3], hello->build_id[2], hello->build_id[1],
@@ -197,16 +217,24 @@ int main()
         return wait_and_exit(1);
     }
 
-    gotoxy(2, 2);
+    gotoxy(2, 1);
     channel = 0;
+    rssi = -128;
     if (netif->type == PFTC_WIFI_CLIENT) {
         wifi = response + sizeof(struct netif_response);
         wifi_size = received - sizeof(struct netif_response);
         if (wifi_size >= 3) {
-            ssid_length = wifi[0];
+            channel = wifi[0];
+            rssi = (signed char)wifi[1];
+            ssid_length = wifi[2];
             if (wifi_size >= (unsigned int)ssid_length + 3) {
-                printf("SSID: %.*s", ssid_length, wifi + 1);
-                channel = wifi[ssid_length + 1];
+                printf("SSID: %.*s", ssid_length, wifi + 3);
+                fflush(stdout);
+                gotoxy(38 - SIGNAL_BAR_LEVELS - 3, 1);
+                putchar(' ');
+                putchar((unsigned char)0xB3);
+                putchar(' ');
+                print_signal_bar(rssi);
             } else
                 printf("SSID: invalid");
         } else
@@ -215,21 +243,21 @@ int main()
         printf("Interface %02X", netif->interface);
     fflush(stdout);
 
-    gotoxy(2, 3);
+    gotoxy(2, 2);
     printf("IP: ");
     print_ipv4(netif->ipv4);
+    printf("/%u", netif->netmask_prefix);
     fflush(stdout);
-    gotoxy(2, 4);
+    gotoxy(2, 3);
     printf("GW: ");
     print_ipv4(netif->gateway);
     fflush(stdout);
-    gotoxy(2, 5);
+    gotoxy(2, 4);
     printf("DNS: ");
     print_ipv4(netif->dns);
     fflush(stdout);
-    gotoxy(2, 6);
-    printf("IF%02X /%u CH%u", netif->interface, netif->netmask_prefix,
-           channel);
+    gotoxy(2, 5);
+    printf("CH%u", channel);
     fflush(stdout);
 
     return wait_and_exit(0);
