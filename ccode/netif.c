@@ -79,14 +79,13 @@ int main()
         return 1;
     }
 
-    ssid_length = wifi[0];
+    ssid_length = wifi[2];
     if (wifi_size < (unsigned int)ssid_length + 3) {
         puts("BAD SSID LENGTH");
         return 1;
     }
 
-    printf("SSID: %.*s\n", ssid_length, wifi + 1);
-    printf("CH%u RSSI%d\n", wifi[ssid_length + 1],
-           (signed char)wifi[ssid_length + 2]);
+    printf("SSID: %.*s\n", ssid_length, wifi + 3);
+    printf("CH%u RSSI%d\n", wifi[0], (signed char)wifi[1]);
     return 0;
 }
