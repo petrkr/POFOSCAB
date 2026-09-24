@@ -4,7 +4,7 @@
 BITS 16
 ORG 0x100
 
-RECV_MAX    equ 90
+RECV_MAX    equ 2048
 MAX_RETRIES equ 10
 
 start:
@@ -215,4 +215,9 @@ parse_ok:       db 0
 netif_type:     db 0
 ssid_len:       db 0
 ssid:           times 33 db 0
-response:       times RECV_MAX db 0
+
+; Shared response capacity used for every foreground request.  NASM's
+; flat-binary BSS reserves runtime memory without adding 2048 zero bytes to
+; NETIFP.COM itself.
+section .bss
+response:       resb RECV_MAX
