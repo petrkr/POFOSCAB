@@ -1,36 +1,13 @@
 #include <stdio.h>
 #include <conio.h>
+#include "pofo.h"
 #include "smartcable.h"
 
-static unsigned char src_saved[16];
-
-static src_save()
-{
-#asm
-    mov cx,#$0303
-    mov dx,#$0000
-    mov ax,#$0800
-    xor bx,bx
-    mov si,#_src_saved
-    int $60
-#endasm
-}
-
-static src_restore()
-{
-#asm
-    mov cx,#$0303
-    mov dx,#$0000
-    mov ax,#$0802
-    xor bx,bx
-    mov si,#_src_saved
-    int $60
-#endasm
-}
+static unsigned char src_screen_buffer[POFO_SCREEN_SIZE(POFO_COORD(0, 0), POFO_COORD(3, 3))];
 
 int main()
 {
-    src_save();
+    pofo_screen_save(POFO_COORD(0, 0), POFO_COORD(3, 3), src_screen_buffer);
     gotoxy(2, 2);
     printf("SRC");
     fflush(stdout);
@@ -42,7 +19,7 @@ int main()
     fflush(stdout);
     smartcable_wait_500ms();
     smartcable_wait_500ms();
-    src_restore();
+    pofo_screen_restore(POFO_COORD(0, 0), POFO_COORD(3, 3), src_screen_buffer);
 
     return 0;
 }
