@@ -1,4 +1,5 @@
 #include "pofo.h"
+#include <string.h>
 
 //  Pofo box
 static unsigned char pofo_box_style;
@@ -124,6 +125,25 @@ unsigned int top_left;
 char *text;
 {
     pofo_dialog_call(0x1400, top_left, text);
+}
+
+/* text is title\0body\0\0 (same format as pofo_message_dialog/
+   pofo_error_dialog). Returns the bottom_right corner of the box the
+   ROM will draw at top_left: two text lines (title, body) plus a
+   border row above and below, width is the longer line plus one
+   border column on each side. */
+unsigned int pofo_dialog_extent(top_left, text)
+unsigned int top_left;
+char *text;
+{
+    unsigned char title_len, body_len, width;
+
+    title_len = (unsigned char)strlen(text);
+    body_len = (unsigned char)strlen(text + title_len + 1);
+    width = (title_len > body_len ? title_len : body_len) + 4;
+
+    return POFO_COORD(POFO_COORD_ROW(top_left) + 3,
+                       POFO_COORD_COL(top_left) + width - 1);
 }
 
 /* Export the upstream BCC gotoxy() implementation. */
