@@ -16,6 +16,13 @@
 #define POFO_BOX_SINGLE 0
 #define POFO_BOX_DOUBLE 1
 
+#define POFO_EDIT_NO_BOX 0xff
+#define POFO_EDIT_BOX_SINGLE 0
+#define POFO_EDIT_BOX_DOUBLE 1
+#define POFO_EDIT_MODE_KEEP_ON_ENTRY 0
+#define POFO_EDIT_MODE_CLEAR_ON_ENTRY 2
+#define POFO_EDIT_TEXT_TOO_LONG -2
+
 void pofo_clear_screen();
 void pofo_hide_cursor();
 /* INT 60h/AH=09h Draw Box, single line on page 0. */
@@ -52,5 +59,12 @@ unsigned int pofo_menu_getsize();
    - caller must pofo_screen_save/restore around this, same as
    pofo_message_dialog. */
 int pofo_menu_show();
+
+/* INT 60h/AH=01h. title/prompt must be non-NULL; use "" for an empty
+   value. value needs max + 1 B and is both input default and output. Its
+   default is retained only with mode 0; mode 2 clears it on entry. Returns
+   the exit key AX, or POFO_EDIT_TEXT_TOO_LONG if title + prompt exceeds
+   253 bytes. */
+int pofo_line_edit();
 
 #endif
