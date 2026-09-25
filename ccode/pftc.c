@@ -13,11 +13,12 @@ static unsigned char hello_request[] = { PFTC_HELLO };
 static unsigned char netifs_request[] = { PFTC_GET_NETIFS };
 static unsigned char netif_request[] = { PFTC_GET_NETIF, 0x00 };
 static unsigned char response[64];
-static char connecting_dialog[] = "Connecting\0Talking to SmartCable...\0\0";
-static char transport_error_dialog[] =
-    "SmartCable error\0Transport failed.\0\0";
-static char protocol_error_dialog[] =
-    "PFTC error\0Invalid response.\0\0";
+static char connecting_dialog_title[] = "Connecting";
+static char connecting_dialog_text[] = "Talking to SmartCable...";
+static char transport_error_dialog_title[] = "SmartCable error";
+static char transport_error_dialog_text[] = "Transport failed.";
+static char protocol_error_dialog_title[] = "PFTC error";
+static char protocol_error_dialog_text[] = "Invalid response.";
 static char status_text[40];
 #define STATUS_TOP_LEFT     POFO_COORD(7, 0)
 #define STATUS_BOTTOM_RIGHT POFO_COORD(7, 39)
@@ -116,13 +117,15 @@ int rssi;
 static show_transport_error()
 {
     status_set("Offline");
-    pofo_error_dialog(POFO_COORD(3, 4), transport_error_dialog);
+    pofo_error_dialog(POFO_COORD(3, 4), transport_error_dialog_title,
+                      transport_error_dialog_text);
 }
 
 static show_protocol_error()
 {
     status_set("Offline");
-    pofo_error_dialog(POFO_COORD(3, 4), protocol_error_dialog);
+    pofo_error_dialog(POFO_COORD(3, 4), protocol_error_dialog_title,
+                      protocol_error_dialog_text);
 }
 
 int main()
@@ -149,15 +152,20 @@ int main()
     pofo_hide_cursor();
     status_set("Connecting");
     pofo_screen_save(DIALOG_TOP_LEFT,
-                      pofo_dialog_extent(DIALOG_TOP_LEFT, connecting_dialog),
+                      pofo_dialog_extent(DIALOG_TOP_LEFT,
+                                         connecting_dialog_title,
+                                         connecting_dialog_text),
                       dialog_screen_buffer);
-    pofo_message_dialog(DIALOG_TOP_LEFT, connecting_dialog);
+    pofo_message_dialog(DIALOG_TOP_LEFT, connecting_dialog_title,
+                        connecting_dialog_text);
 
     status = smartcable_exchange(hello_request, sizeof(hello_request),
                            response, sizeof(response), &received);
 
     pofo_screen_restore(DIALOG_TOP_LEFT,
-                         pofo_dialog_extent(DIALOG_TOP_LEFT, connecting_dialog),
+                         pofo_dialog_extent(DIALOG_TOP_LEFT,
+                                            connecting_dialog_title,
+                                            connecting_dialog_text),
                          dialog_screen_buffer);
 
     if (status != 0) {
