@@ -22,6 +22,7 @@
 #define POFO_EDIT_MODE_KEEP_ON_ENTRY 0
 #define POFO_EDIT_MODE_CLEAR_ON_ENTRY 2
 #define POFO_EDIT_TEXT_TOO_LONG -2
+#define POFO_NO_MEMORY -1
 
 void pofo_clear_screen();
 void pofo_hide_cursor();
@@ -30,12 +31,12 @@ void pofo_draw_box();
 /* INT 60h/AH=09h Draw Box with an explicit style and video page. */
 void pofo_draw_box_ex();
 
-/* title/text are separate zero-terminated strings; top_left uses
-   POFO_COORD(). */
-void pofo_message_dialog();
-void pofo_error_dialog();
+/* text/title are zero-terminated strings; top_left uses POFO_COORD().
+   Returns 0, or POFO_NO_MEMORY. */
+int pofo_message_dialog();
+int pofo_error_dialog();
 /* Returns bottom_right (POFO_COORD()) of the box a message/error dialog
-   with this top_left/title/text would draw - use with pofo_screen_save/restore
+   with this top_left/text/title would draw - use with pofo_screen_save/restore
    to snapshot exactly the area the dialog covers before showing it. */
 unsigned int pofo_dialog_extent();
 
