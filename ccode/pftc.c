@@ -117,15 +117,15 @@ int rssi;
 static show_transport_error()
 {
     status_set("Offline");
-    pofo_error_dialog(POFO_COORD(3, 4), transport_error_dialog_title,
-                      transport_error_dialog_text);
+    pofo_error_dialog(POFO_COORD(3, 4), transport_error_dialog_text,
+                      transport_error_dialog_title);
 }
 
 static show_protocol_error()
 {
     status_set("Offline");
-    pofo_error_dialog(POFO_COORD(3, 4), protocol_error_dialog_title,
-                      protocol_error_dialog_text);
+    pofo_error_dialog(POFO_COORD(3, 4), protocol_error_dialog_text,
+                      protocol_error_dialog_title);
 }
 
 int main()
@@ -153,19 +153,19 @@ int main()
     status_set("Connecting");
     pofo_screen_save(DIALOG_TOP_LEFT,
                       pofo_dialog_extent(DIALOG_TOP_LEFT,
-                                         connecting_dialog_title,
-                                         connecting_dialog_text),
+                                         connecting_dialog_text,
+                                         connecting_dialog_title),
                       dialog_screen_buffer);
-    pofo_message_dialog(DIALOG_TOP_LEFT, connecting_dialog_title,
-                        connecting_dialog_text);
+    pofo_message_dialog(DIALOG_TOP_LEFT, connecting_dialog_text,
+                        connecting_dialog_title);
 
     status = smartcable_exchange(hello_request, sizeof(hello_request),
                            response, sizeof(response), &received);
 
     pofo_screen_restore(DIALOG_TOP_LEFT,
                          pofo_dialog_extent(DIALOG_TOP_LEFT,
-                                            connecting_dialog_title,
-                                            connecting_dialog_text),
+                                            connecting_dialog_text,
+                                            connecting_dialog_title),
                          dialog_screen_buffer);
 
     if (status != 0) {
