@@ -19,7 +19,7 @@ int main()
     fflush(stdout);
 
     pofo_hide_cursor();
-    pofo_message_dialog(POFO_COORD(2, 2), dialog_title, dialog_text);
+    pofo_message_dialog(POFO_COORD(2, 2), dialog_text, dialog_title);
 
     while (getch() != 0x1011)
         ;
