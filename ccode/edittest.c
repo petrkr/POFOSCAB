@@ -5,7 +5,8 @@
 static char value[33] = "aaa";
 static char title[] = "PFTC";
 static char prompt[] = "SSID: ";
-static char dialog[] = "Headre\0INT60 Editor\0\0";
+static char dialog_title[] = "";
+static char dialog_text[] = "INT60 Editor";
 static unsigned int exit_keys[] = { 0x000d, 0x001b, 0x0003, 0x0000 };
 
 int main()
@@ -17,12 +18,13 @@ int main()
     printf("INT60 editor");
     fflush(stdout);
 
-    pofo_message_dialog(POFO_COORD(2, 2), dialog);
+    pofo_hide_cursor();
+    pofo_message_dialog(POFO_COORD(2, 2), dialog_title, dialog_text);
 
     while (getch() != 0x1011)
         ;
 
-    result = pofo_line_edit(3, 2, title, prompt, value, 32, 34,
+    result = pofo_line_edit(POFO_COORD(2, 3), title, prompt, value, 32, 34,
                             POFO_EDIT_MODE_CLEAR_ON_ENTRY,
                             POFO_EDIT_BOX_DOUBLE, exit_keys);
 
