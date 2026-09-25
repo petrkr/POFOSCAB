@@ -40,10 +40,9 @@ unsigned int value;
     pofo_edit_block[offset + 1] = (unsigned char)(value >> 8);
 }
 
-int pofo_line_edit(xpos, ypos, title, prompt, value, max, width, mode,
+int pofo_line_edit(top_left, title, prompt, value, max, width, mode,
                    window, exit_keys)
-unsigned char xpos;
-unsigned char ypos;
+unsigned int top_left;
 char *title;
 char *prompt;
 char *value;
@@ -70,8 +69,8 @@ unsigned int *exit_keys;
     pofo_edit_word(POFO_EDIT_TARGET_OFFSET, (unsigned int)value);
     pofo_edit_word(POFO_EDIT_POS_OFFSET, 0);
     pofo_edit_word(POFO_EDIT_MAX_OFFSET, max);
-    pofo_edit_block[POFO_EDIT_XPOS_OFFSET] = xpos;
-    pofo_edit_block[POFO_EDIT_YPOS_OFFSET] = ypos;
+    pofo_edit_block[POFO_EDIT_XPOS_OFFSET] = POFO_COORD_COL(top_left);
+    pofo_edit_block[POFO_EDIT_YPOS_OFFSET] = POFO_COORD_ROW(top_left);
     pofo_edit_block[POFO_EDIT_MODE_OFFSET] = mode;
     pofo_edit_word(POFO_EDIT_HIT_OFFSET, 0);
     pofo_edit_word(POFO_EDIT_TITLE_OFFSET, (unsigned int)pofo_edit_title_prompt);

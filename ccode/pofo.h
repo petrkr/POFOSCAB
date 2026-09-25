@@ -30,11 +30,12 @@ void pofo_draw_box();
 /* INT 60h/AH=09h Draw Box with an explicit style and video page. */
 void pofo_draw_box_ex();
 
-/* text is title\0body\0\0; top_left uses POFO_COORD(). */
+/* title/text are separate zero-terminated strings; top_left uses
+   POFO_COORD(). */
 void pofo_message_dialog();
 void pofo_error_dialog();
 /* Returns bottom_right (POFO_COORD()) of the box a message/error dialog
-   with this top_left/text would draw - use with pofo_screen_save/restore
+   with this top_left/title/text would draw - use with pofo_screen_save/restore
    to snapshot exactly the area the dialog covers before showing it. */
 unsigned int pofo_dialog_extent();
 
@@ -60,11 +61,11 @@ unsigned int pofo_menu_getsize();
    pofo_message_dialog. */
 int pofo_menu_show();
 
-/* INT 60h/AH=01h. title/prompt must be non-NULL; use "" for an empty
-   value. value needs max + 1 B and is both input default and output. Its
-   default is retained only with mode 0; mode 2 clears it on entry. Returns
-   the exit key AX, or POFO_EDIT_TEXT_TOO_LONG if title + prompt exceeds
-   253 bytes. */
+/* INT 60h/AH=01h. top_left uses POFO_COORD(); title/prompt must be non-NULL;
+   use "" for an empty value. value needs max + 1 B and is both input default
+   and output. Its default is retained only with mode 0; mode 2 clears it on
+   entry. Returns the exit key AX, or POFO_EDIT_TEXT_TOO_LONG if title +
+   prompt exceeds 253 bytes. */
 int pofo_line_edit();
 
 #endif
