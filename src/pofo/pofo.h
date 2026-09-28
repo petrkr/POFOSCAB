@@ -38,10 +38,12 @@ void pofo_draw_box_ex();
 /* text/title are zero-terminated strings; top_left uses POFO_COORD().
    Returns 0, or POFO_NO_MEMORY. */
 int pofo_message_dialog();
+/* No title - text is "Line one\nLine two" or a plain sentence.
+   Self-erasing on keypress, no save/restore needed. Returns 0, or
+   POFO_NO_MEMORY. */
 int pofo_error_dialog();
-/* Returns bottom_right (POFO_COORD()) of the box a message/error dialog
-   with this top_left/text/title would draw - use with pofo_screen_save/restore
-   to snapshot exactly the area the dialog covers before showing it. */
+/* Bottom_right (POFO_COORD()) of the box pofo_message_dialog would draw
+   - use with pofo_screen_save/restore before showing it. */
 unsigned int pofo_dialog_extent();
 
 /* top_left/bottom_right use POFO_COORD(), inclusive. buffer is caller-owned
