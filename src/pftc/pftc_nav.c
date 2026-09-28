@@ -181,11 +181,51 @@ enum nav_state do_dashboard()
     }
 }
 
-/* Stubs for steps not yet implemented (PFTC.md SS6 steps 3-6) - each
-   just bounces back to a sensible state so the loop is complete and
-   testable before the real screens land. */
+#define NAV_MENU_TOP_LEFT POFO_COORD(0, 0)
+/* Visible-height limit in rows including borders - rows 0-6, row 7
+   stays the status line. Required on the native 40x8 display: an unset
+   limit lets the menu overflow past the screen (see PFTC.md SS2). */
+#define NAV_MENU_HEIGHT_LIMIT 7
+#define NAV_MENU_TYPE_DEPTH ((NAV_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
+
+static char root_menu_text[] = "PFTC\0Interfaces\0Info\0Exit\0\0";
+
+/* screen_push sized via pofo_menu_getsize/pofo_menu_show - the ROM
+   leaves the menu box on screen afterward (see pofo_menu_show), so this
+   pair must bracket the pofo_menu_show call the same way
+   progress_dialog_open/close bracket a message dialog. ESC ->
+   NAV_DASHBOARD; otherwise decode the selected item (0-based, title not
+   counted). An OOM push falls back to an error dialog and stays on the
+   dashboard - never draws the menu without something to restore it. */
 enum nav_state do_root_menu()
 {
+    unsigned int bottom_right;
+    int result;
+    unsigned char selected;
+
+    pofo_menu_getsize(NAV_MENU_TOP_LEFT, root_menu_text, 0, &bottom_right);
+    if (screen_push(NAV_MENU_TOP_LEFT, bottom_right) != 0) {
+        show_out_of_memory_error();
+        return NAV_DASHBOARD;
+    }
+
+    result = pofo_menu_show(NAV_MENU_TOP_LEFT, root_menu_text, 0, 0, 0,
+                            NAV_MENU_TYPE_DEPTH);
+    screen_pop();
+
+    if (result == -1)
+        return NAV_DASHBOARD;
+
+    selected = POFO_COORD_COL(result);
+    switch (selected) {
+    case 0:
+        return NAV_INTERFACES;
+    case 1:
+        return NAV_INFO;
+    case 2:
+        pofo_clear_screen();
+        return NAV_EXIT;
+    }
     return NAV_DASHBOARD;
 }
 
