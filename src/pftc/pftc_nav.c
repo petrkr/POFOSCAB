@@ -38,37 +38,16 @@ static char netif_ssid[64];
 
 /* Returns 0 on success, non-zero on error (already reported). netif_ok
    stays untouched on failure so a failed refresh keeps old data. */
-static int do_fetch_netif()
+static int fetch_netif(interface)
+unsigned char interface;
 {
     unsigned int received;
-    unsigned int entries_size;
     unsigned int wifi_size;
     unsigned char *wifi;
     int status;
-    struct netifs_response *netifs;
     struct netif_response *netif;
 
-    progress_dialog_open("Getting interfaces");
-    status = smartcable_exchange(netifs_request, sizeof(netifs_request),
-                           response, sizeof(response), &received);
-    progress_dialog_close();
-    if (status != 0) {
-        show_transport_error();
-        return 1;
-    }
-    if (received < 3) {
-        show_protocol_error();
-        return 1;
-    }
-    netifs = (struct netifs_response *)response;
-    entries_size = received - 3;
-    if (netifs->error != 0 || netifs->count == 0 ||
-        netifs->count > entries_size / sizeof(struct netif_entry)) {
-        show_protocol_error();
-        return 1;
-    }
-
-    netif_request[1] = netifs->entries[0].interface;
+    netif_request[1] = interface;
     progress_dialog_open("Getting interface");
     status = smartcable_exchange(netif_request, sizeof(netif_request),
                            response, sizeof(response), &received);
@@ -126,6 +105,38 @@ static int do_fetch_netif()
 
     netif_ok = 1;
     return 0;
+}
+
+/* Returns 0 on success, non-zero on error (already reported). netif_ok
+   stays untouched on failure so a failed refresh keeps old data. */
+static int do_fetch_netif()
+{
+    unsigned int received;
+    unsigned int entries_size;
+    int status;
+    struct netifs_response *netifs;
+
+    progress_dialog_open("Getting interfaces");
+    status = smartcable_exchange(netifs_request, sizeof(netifs_request),
+                           response, sizeof(response), &received);
+    progress_dialog_close();
+    if (status != 0) {
+        show_transport_error();
+        return 1;
+    }
+    if (received < 3) {
+        show_protocol_error();
+        return 1;
+    }
+    netifs = (struct netifs_response *)response;
+    entries_size = received - 3;
+    if (netifs->error != 0 || netifs->count == 0 ||
+        netifs->count > entries_size / sizeof(struct netif_entry)) {
+        show_protocol_error();
+        return 1;
+    }
+
+    return fetch_netif(netifs->entries[0].interface);
 }
 
 enum nav_state do_handshake()
@@ -294,13 +305,163 @@ enum nav_state do_root_menu()
     return NAV_DASHBOARD;
 }
 
-enum nav_state do_interfaces_list()
+#define INTERFACES_MENU_TOP_LEFT POFO_COORD(1, 2)
+#define INTERFACES_MENU_HEIGHT_LIMIT 7
+#define INTERFACES_MENU_TYPE_DEPTH \
+    ((INTERFACES_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
+#define INTERFACES_MENU_MAX_ITEMS 8
+
+static char interfaces_menu_text[INTERFACES_MENU_MAX_ITEMS * 16 + 16];
+static unsigned char interfaces_menu_interface[INTERFACES_MENU_MAX_ITEMS];
+static unsigned char selected_interface;
+
+static char *netif_type_label(type)
+unsigned char type;
 {
-    return NAV_ROOT_MENU;
+    switch (type) {
+    case 0x01: return "WiFi client";
+    case 0x02: return "WiFi AP";
+    case 0x03: return "Ethernet";
+    }
+    return "Unknown";
 }
 
+enum nav_state do_interfaces_list()
+{
+    unsigned int received;
+    int status;
+    struct netifs_response *netifs;
+    unsigned char i, count;
+    char *p;
+    unsigned int bottom_right;
+    int result;
+
+    progress_dialog_open("Getting interfaces");
+    status = smartcable_exchange(netifs_request, sizeof(netifs_request),
+                           response, sizeof(response), &received);
+    progress_dialog_close();
+    if (status != 0) {
+        show_transport_error();
+        return NAV_ROOT_MENU;
+    }
+    if (received < 3) {
+        show_protocol_error();
+        return NAV_ROOT_MENU;
+    }
+    netifs = (struct netifs_response *)response;
+    if (netifs->error != 0 || netifs->count == 0 ||
+        netifs->count > (received - 3) / sizeof(struct netif_entry)) {
+        show_protocol_error();
+        return NAV_ROOT_MENU;
+    }
+
+    count = netifs->count;
+    if (count > INTERFACES_MENU_MAX_ITEMS)
+        count = INTERFACES_MENU_MAX_ITEMS;
+
+    p = interfaces_menu_text;
+    *p++ = 0; /* no title */
+    for (i = 0; i < count; i++) {
+        interfaces_menu_interface[i] = netifs->entries[i].interface;
+        strcpy(p, netif_type_label(netifs->entries[i].type));
+        p += strlen(p) + 1;
+    }
+    *p = 0; /* double zero terminator */
+
+    pofo_menu_getsize(INTERFACES_MENU_TOP_LEFT, interfaces_menu_text, 0,
+                       &bottom_right);
+    if (screen_push(INTERFACES_MENU_TOP_LEFT, bottom_right) != 0) {
+        show_out_of_memory_error();
+        return NAV_ROOT_MENU;
+    }
+
+    pofo_show_cursor();
+    result = pofo_menu_show(INTERFACES_MENU_TOP_LEFT, interfaces_menu_text,
+                            0, 0, 0, INTERFACES_MENU_TYPE_DEPTH);
+    pofo_hide_cursor();
+    screen_pop();
+
+    if (result == -1)
+        return NAV_ROOT_MENU;
+
+    selected_interface = interfaces_menu_interface[POFO_COORD_COL(result)];
+    return NAV_DETAIL;
+}
+
+#define DETAIL_MENU_TOP_LEFT POFO_COORD(1, 2)
+#define DETAIL_MENU_HEIGHT_LIMIT 7
+#define DETAIL_MENU_TYPE_DEPTH \
+    ((DETAIL_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
+
+static char detail_menu_text[256];
+
+static void build_detail_text()
+{
+    char *p;
+
+    p = detail_menu_text;
+    strcpy(p, "Interface Detail");
+    p += strlen(p) + 1;
+
+    if (netif_type == PFTC_WIFI_CLIENT) {
+        if (netif_ssid_length == 0xFF)
+            strcpy(p, "SSID: invalid");
+        else if (netif_ssid_length == 0xFE)
+            strcpy(p, "SSID: unavailable");
+        else
+            sprintf(p, "SSID: %s", netif_ssid);
+    } else
+        sprintf(p, "Interface %02X", netif_interface);
+    p += strlen(p) + 1;
+
+    if (netif_type == PFTC_WIFI_CLIENT &&
+        netif_ssid_length != 0xFF && netif_ssid_length != 0xFE) {
+        sprintf(p, "RSSI: %d dBm", netif_rssi);
+        p += strlen(p) + 1;
+        sprintf(p, "Channel: %u", netif_channel);
+        p += strlen(p) + 1;
+    }
+
+    sprintf(p, "IP: %u.%u.%u.%u/%u", netif_ipv4[0], netif_ipv4[1],
+            netif_ipv4[2], netif_ipv4[3], netif_netmask_prefix);
+    p += strlen(p) + 1;
+    sprintf(p, "GW: %u.%u.%u.%u", netif_gateway[0], netif_gateway[1],
+            netif_gateway[2], netif_gateway[3]);
+    p += strlen(p) + 1;
+    sprintf(p, "DNS: %u.%u.%u.%u", netif_dns[0], netif_dns[1],
+            netif_dns[2], netif_dns[3]);
+    p += strlen(p) + 1;
+
+    *p = 0; /* double zero terminator */
+}
+
+/* Always re-fetches selected_interface fresh - stale dashboard data is
+   never reused here. A scrollable menu-as-window (see INT60H.md AH=0Fh
+   depth bits) stands in for a real info window - the ROM has no
+   passive scrolling text primitive. ESC or an item pick both just
+   close it -> NAV_INTERFACES. */
 enum nav_state do_interface_detail()
 {
+    unsigned int bottom_right;
+
+    if (fetch_netif(selected_interface) != 0)
+        return NAV_INTERFACES;
+
+    build_detail_text();
+
+    pofo_menu_getsize(DETAIL_MENU_TOP_LEFT, detail_menu_text, 0,
+                       &bottom_right);
+    if (screen_push(DETAIL_MENU_TOP_LEFT, bottom_right) != 0) {
+        show_out_of_memory_error();
+        return NAV_INTERFACES;
+    }
+
+    pofo_show_cursor();
+    pofo_menu_show(DETAIL_MENU_TOP_LEFT, detail_menu_text, 0, 0, 0,
+                   DETAIL_MENU_TYPE_DEPTH);
+    pofo_hide_cursor();
+    screen_pop();
+
     return NAV_INTERFACES;
 }
 
