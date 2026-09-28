@@ -26,6 +26,10 @@
 
 void pofo_clear_screen();
 void pofo_hide_cursor();
+/* INT 10h/AH=01h Set Cursor Type - sets an explicit full-block shape
+   (CX=0x0007); leaving CX unset is unreliable (confirmed by direct
+   test - depends on whatever was in CX from earlier code). */
+void pofo_show_cursor();
 /* INT 60h/AH=09h Draw Box, single line on page 0. */
 void pofo_draw_box();
 /* INT 60h/AH=09h Draw Box with an explicit style and video page. */

@@ -38,6 +38,26 @@ void pofo_hide_cursor()
 #endasm
 }
 
+/* INT 10h/AH=01h Set Cursor Type, explicit CX=0x0007 (full block) -
+   leaving CX unset is unreliable (depends on whatever was in CX from
+   earlier code; confirmed by direct test: worked when CX happened to
+   hold a prior pofo_hide_cursor() value, silently failed/showed no
+   cursor from a fresh, undetermined CX otherwise). Shapes other than a
+   full block draw nothing on the Portfolio's LCD, so this is also the
+   only shape worth setting. */
+void pofo_show_cursor()
+{
+#asm
+    push ax
+    push cx
+    mov ah,#$01
+    mov cx,#$0007
+    int $10
+    pop cx
+    pop ax
+#endasm
+}
+
 /* Export the upstream BCC gotoxy() implementation. */
 int gotoxy(x, y)
 {
