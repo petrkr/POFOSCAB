@@ -22,6 +22,7 @@ void print_ipv4();
 void print_signal_bar();
 void show_transport_error();
 void show_protocol_error();
+void show_out_of_memory_error();
 
 /* Progress message dialog (AH=12h, needs manual save/restore unlike the
    error dialogs above), titleless - open with the action's text (e.g.

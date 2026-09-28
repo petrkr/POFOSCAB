@@ -18,6 +18,8 @@ static char transport_error_dialog_title[] = "SmartCable error";
 static char transport_error_dialog_text[] = "Transport failed.";
 static char protocol_error_dialog_title[] = "PFTC error";
 static char protocol_error_dialog_text[] = "Invalid response.";
+static char oom_error_dialog_title[] = "PFTC error";
+static char oom_error_dialog_text[] = "Out of memory.";
 
 void status_init()
 {
@@ -73,6 +75,12 @@ void show_protocol_error()
     status_set("Offline");
     pofo_error_dialog(DIALOG_TOP_LEFT, protocol_error_dialog_text,
                       protocol_error_dialog_title);
+}
+
+void show_out_of_memory_error()
+{
+    pofo_error_dialog(DIALOG_TOP_LEFT, oom_error_dialog_text,
+                      oom_error_dialog_title);
 }
 
 void progress_dialog_open(text)
