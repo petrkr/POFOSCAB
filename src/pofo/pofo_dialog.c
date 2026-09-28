@@ -43,15 +43,18 @@ char *title;
 #asm
     push ax
     push bx
+    push cx
     push dx
     push si
     mov ax,_pofo_dialog_action
     xor bx,bx
+    mov cx,#1
     mov dx,_pofo_dialog_top_left
     mov si,_pofo_dialog_text
     int 0x60
     pop si
     pop dx
+    pop cx
     pop bx
     pop ax
 #endasm
