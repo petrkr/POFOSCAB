@@ -5,21 +5,15 @@
 #include "pftc_gui.h"
 
 static unsigned char status_screen_buffer[POFO_SCREEN_SIZE(STATUS_TOP_LEFT, STATUS_BOTTOM_RIGHT)];
-/* Sized for the widest progress text actually passed to
-   progress_dialog_open() - "Getting interfaces" (18 chars) with an
-   empty title, width = 18 + 4 = 22, so bottom_right col = 2 + 22 - 1 =
-   23; height is always top_left row + 3. Widen this if a longer text
-   is ever added. */
+/* Sized for the widest progress_dialog_open() text ("Getting interfaces");
+   widen if a longer one is added. */
 static unsigned char dialog_screen_buffer[POFO_SCREEN_SIZE(DIALOG_TOP_LEFT, POFO_COORD(5, 23))];
 
 static char progress_dialog_title[] = "";
 static char *progress_dialog_text;
-static char transport_error_dialog_title[] = "SmartCable error";
-static char transport_error_dialog_text[] = "Transport failed.";
-static char protocol_error_dialog_title[] = "PFTC error";
-static char protocol_error_dialog_text[] = "Invalid response.";
-static char oom_error_dialog_title[] = "PFTC error";
-static char oom_error_dialog_text[] = "Out of memory.";
+static char transport_error_dialog_text[] = "SmartCable error\nTransport failed.";
+static char protocol_error_dialog_text[] = "PFTC error\nInvalid response.";
+static char oom_error_dialog_text[] = "PFTC error\nOut of memory.";
 
 void status_init()
 {
@@ -66,21 +60,18 @@ int rssi;
 void show_transport_error()
 {
     status_set("Offline");
-    pofo_error_dialog(DIALOG_TOP_LEFT, transport_error_dialog_text,
-                      transport_error_dialog_title);
+    pofo_error_dialog(DIALOG_TOP_LEFT, transport_error_dialog_text);
 }
 
 void show_protocol_error()
 {
     status_set("Offline");
-    pofo_error_dialog(DIALOG_TOP_LEFT, protocol_error_dialog_text,
-                      protocol_error_dialog_title);
+    pofo_error_dialog(DIALOG_TOP_LEFT, protocol_error_dialog_text);
 }
 
 void show_out_of_memory_error()
 {
-    pofo_error_dialog(DIALOG_TOP_LEFT, oom_error_dialog_text,
-                      oom_error_dialog_title);
+    pofo_error_dialog(DIALOG_TOP_LEFT, oom_error_dialog_text);
 }
 
 void progress_dialog_open(text)

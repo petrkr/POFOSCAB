@@ -35,9 +35,6 @@ int main()
         case NAV_INFO:
             state = do_info_screen();
             break;
-        case NAV_OFFLINE:
-            state = do_offline();
-            break;
         case NAV_EXIT:
             pofo_clear_screen();
             return 0;
