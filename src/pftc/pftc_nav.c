@@ -564,7 +564,6 @@ static void build_network_settings_text()
    of its own. */
 enum nav_state do_network_settings()
 {
-    unsigned int bottom_right;
     int result;
     unsigned int exit_keys[3];
     exit_keys[0] = 0x000D;
@@ -578,24 +577,22 @@ enum nav_state do_network_settings()
     network_settings_psk[0] = 0;
 
     pofo_show_cursor();
-    for (;;) {
-        build_network_settings_text();
 
-        pofo_menu_getsize(SETTINGS_MENU_TOP_LEFT, network_settings_menu_text,
-                          0, &bottom_right);
-        if (screen_push(SETTINGS_MENU_TOP_LEFT, bottom_right) != 0) {
-            pofo_hide_cursor();
+    for (;;) {
+        if (screen_push(POFO_COORD(1, 1), POFO_COORD(7, 38)) != 0) {
             show_out_of_memory_error();
             return NAV_INTERFACE_MENU;
         }
 
+        build_network_settings_text();
+
         result = pofo_menu_show(SETTINGS_MENU_TOP_LEFT,
                                 network_settings_menu_text, 0, 0, 0,
                                 SETTINGS_MENU_TYPE_DEPTH);
-        screen_pop();
 
         if (result == -1) {
             pofo_hide_cursor();
+            screen_pop();
             return NAV_INTERFACE_MENU;
         }
 
@@ -620,6 +617,7 @@ enum nav_state do_network_settings()
         case 3:
             pofo_hide_cursor();
             pofo_error_dialog(DIALOG_TOP_LEFT, not_supported_dialog_text);
+            screen_pop();
             return NAV_INTERFACE_MENU;
         }
     }
@@ -667,7 +665,6 @@ static void build_ip_settings_text()
    IPCFG wire code exists yet). */
 enum nav_state do_ip_settings()
 {
-    unsigned int bottom_right;
     int result;
     unsigned int exit_keys[3];
 
@@ -685,25 +682,20 @@ enum nav_state do_ip_settings()
 
     pofo_show_cursor();
     for (;;) {
-        build_ip_settings_text();
-
-        pofo_menu_getsize(SETTINGS_MENU_TOP_LEFT, ip_settings_menu_text,
-                          0, &bottom_right);
-        
-
-        if (screen_push(SETTINGS_MENU_TOP_LEFT, bottom_right) != 0) {
-            pofo_hide_cursor();
+        if (screen_push(POFO_COORD(1, 1), POFO_COORD(7, 38)) != 0) {
             show_out_of_memory_error();
             return NAV_INTERFACE_MENU;
         }
 
+        build_ip_settings_text();
+
         result = pofo_menu_show(SETTINGS_MENU_TOP_LEFT,
                                 ip_settings_menu_text, 0, 0, 0,
                                 SETTINGS_MENU_TYPE_DEPTH);
-        screen_pop();
 
         if (result == -1) {
             pofo_hide_cursor();
+            screen_pop();
             return NAV_INTERFACE_MENU;
         }
 
@@ -737,8 +729,10 @@ enum nav_state do_ip_settings()
         case 5:
             pofo_hide_cursor();
             pofo_error_dialog(DIALOG_TOP_LEFT, not_supported_dialog_text);
+            screen_pop();
             return NAV_INTERFACE_MENU;
         }
+        screen_pop();
     }
 }
 
