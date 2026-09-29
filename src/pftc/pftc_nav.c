@@ -538,6 +538,8 @@ unsigned char flag;
     return flag ? "Yes" : "No";
 }
 
+/* When disabled, only Enabled/Apply are shown - no point offering
+   Scan/SSID/PSK for a slot that's off. */
 static void build_network_settings_text()
 {
     char *p;
@@ -549,14 +551,16 @@ static void build_network_settings_text()
     sprintf(line, "Enabled: %s", yesno(network_settings_enabled));
     strcpy(p, line);
     p += strlen(p) + 1;
-    strcpy(p, "Scan");
-    p += strlen(p) + 1;
-    sprintf(line, "SSID: %s", network_settings_ssid);
-    strcpy(p, line);
-    p += strlen(p) + 1;
-    sprintf(line, "PSK: %s", network_settings_psk);
-    strcpy(p, line);
-    p += strlen(p) + 1;
+    if (network_settings_enabled) {
+        strcpy(p, "Scan");
+        p += strlen(p) + 1;
+        sprintf(line, "SSID: %s", network_settings_ssid);
+        strcpy(p, line);
+        p += strlen(p) + 1;
+        sprintf(line, "PSK: %s", network_settings_psk);
+        strcpy(p, line);
+        p += strlen(p) + 1;
+    }
     strcpy(p, "Apply");
     p += strlen(p) + 1;
     *p = 0;
@@ -713,9 +717,25 @@ enum nav_state do_network_settings()
         }
 
         last_item = POFO_LOW_BYTE(result);
+        if (!network_settings_enabled) {
+            /* Disabled: only Enabled(0)/Apply(1) are on screen at all. */
+            switch (last_item) {
+            case 0:
+                network_settings_enabled = 1;
+                break;
+            case 1:
+                pofo_hide_cursor();
+                pofo_error_dialog(DIALOG_TOP_LEFT, not_supported_dialog_text);
+                screen_pop();
+                return NAV_INTERFACE_MENU;
+            }
+            screen_pop();
+            continue;
+        }
+
         switch (last_item) {
         case 0:
-            network_settings_enabled = !network_settings_enabled;
+            network_settings_enabled = 0;
             break;
         case 1:
             if (do_wifi_scan_menu(&scanned_security)) {
