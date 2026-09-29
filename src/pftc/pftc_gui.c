@@ -12,8 +12,8 @@ static unsigned char dialog_screen_buffer[POFO_SCREEN_SIZE(DIALOG_TOP_LEFT, POFO
 static char progress_dialog_title[] = "";
 static char *progress_dialog_text;
 static char transport_error_dialog_text[] = "SmartCable error\nTransport failed.";
-static char protocol_error_dialog_text[] = "PFTC error\nInvalid response.";
-static char oom_error_dialog_text[] = "PFTC error\nOut of memory.";
+static char protocol_error_dialog_text[] = "Invalid response.";
+static char oom_error_dialog_text[] = "Out of memory.";
 
 void status_init()
 {

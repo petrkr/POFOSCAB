@@ -36,6 +36,8 @@ static int netif_rssi;
 static unsigned char netif_ssid_length;
 static char netif_ssid[64];
 
+static char not_supported_dialog_text[] = "Not supported yet.";
+
 /* Returns 0 on success, non-zero on error (already reported). netif_ok
    stays untouched on failure so a failed refresh keeps old data. */
 static int fetch_netif(interface)
@@ -516,9 +518,10 @@ enum nav_state do_interface_detail()
     return NAV_INTERFACE_MENU;
 }
 
-static char not_supported_dialog_text[] = "Not supported yet.";
 
 #define SETTINGS_MENU_TOP_LEFT POFO_COORD(1, 2)
+#define SETTINGS_EDIT_TOP_LEFT POFO_COORD(3, 12)
+
 #define SETTINGS_MENU_HEIGHT_LIMIT 7
 #define SETTINGS_MENU_TYPE_DEPTH \
     ((SETTINGS_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
@@ -601,16 +604,16 @@ enum nav_state do_network_settings()
             network_settings_enabled = !network_settings_enabled;
             break;
         case 1:
-            pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "SSID", "",
+            pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "SSID", "",
                           network_settings_ssid,
-                          sizeof(network_settings_ssid) - 1, 34,
+                          sizeof(network_settings_ssid) - 1, 20,
                           POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
                           exit_keys);
             break;
         case 2:
-            pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "PSK", "",
+            pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "PSK", "",
                           network_settings_psk,
-                          sizeof(network_settings_psk) - 1, 34,
+                          sizeof(network_settings_psk) - 1, 20,
                           POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
                           exit_keys);
             break;
@@ -626,7 +629,7 @@ enum nav_state do_network_settings()
 
 static char ip_settings_menu_text[SETTINGS_FIELD_MAX * 5 + 32];
 static char ip_settings_ip[16];
-static char ip_settings_netmask[3];
+static char ip_settings_prefix[3];
 static char ip_settings_gateway[16];
 static unsigned char ip_settings_mode_static;
 static unsigned char ip_settings_ipv6;
@@ -645,7 +648,7 @@ static void build_ip_settings_text()
     sprintf(line, "IP: %s", ip_settings_ip);
     strcpy(p, line);
     p += strlen(p) + 1;
-    sprintf(line, "Netmask: %s", ip_settings_netmask);
+    sprintf(line, "Prefix: %s", ip_settings_prefix);
     strcpy(p, line);
     p += strlen(p) + 1;
     sprintf(line, "Gateway: %s", ip_settings_gateway);
@@ -675,7 +678,7 @@ enum nav_state do_ip_settings()
 
     sprintf(ip_settings_ip, "%u.%u.%u.%u", netif_ipv4[0], netif_ipv4[1],
             netif_ipv4[2], netif_ipv4[3]);
-    sprintf(ip_settings_netmask, "%u", netif_netmask_prefix);
+    sprintf(ip_settings_prefix, "%u", netif_netmask_prefix);
     sprintf(ip_settings_gateway, "%u.%u.%u.%u", netif_gateway[0],
             netif_gateway[1], netif_gateway[2], netif_gateway[3]);
     ip_settings_mode_static = 0;
@@ -705,22 +708,22 @@ enum nav_state do_ip_settings()
             ip_settings_mode_static = !ip_settings_mode_static;
             break;
         case 1:
-            pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "IP", "",
-                          ip_settings_ip, sizeof(ip_settings_ip) - 1, 17,
+            pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "IP", "",
+                          ip_settings_ip, sizeof(ip_settings_ip) - 1, 18,
                           POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
                           exit_keys);
             break;
         case 2:
-            pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "Netmask", "",
-                          ip_settings_netmask,
-                          sizeof(ip_settings_netmask) - 1, 17,
+            pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "Prefix", "",
+                          ip_settings_prefix,
+                          sizeof(ip_settings_prefix) - 1, 12,
                           POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
                           exit_keys);
             break;
         case 3:
-            pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "Gateway", "",
+            pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "Gateway", "",
                           ip_settings_gateway,
-                          sizeof(ip_settings_gateway) - 1, 17,
+                          sizeof(ip_settings_gateway) - 1, 18,
                           POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
                           exit_keys);
             break;
@@ -739,5 +742,7 @@ enum nav_state do_ip_settings()
 
 enum nav_state do_info_screen()
 {
+    pofo_hide_cursor();
+    pofo_error_dialog(DIALOG_TOP_LEFT, not_supported_dialog_text);
     return NAV_ROOT_MENU;
 }
