@@ -567,6 +567,9 @@ enum nav_state do_network_settings()
     unsigned int bottom_right;
     int result;
     unsigned int exit_keys[3];
+    exit_keys[0] = 0x000D;
+    exit_keys[1] = 0x001B;
+    exit_keys[2] = 0;
 
     network_settings_enabled = 1;
     strcpy(network_settings_ssid,
@@ -601,9 +604,6 @@ enum nav_state do_network_settings()
             network_settings_enabled = !network_settings_enabled;
             break;
         case 1:
-            exit_keys[0] = 0x000D;
-            exit_keys[1] = 0x001B;
-            exit_keys[2] = 0;
             pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "SSID", "",
                           network_settings_ssid,
                           sizeof(network_settings_ssid) - 1, 34,
@@ -611,9 +611,6 @@ enum nav_state do_network_settings()
                           exit_keys);
             break;
         case 2:
-            exit_keys[0] = 0x000D;
-            exit_keys[1] = 0x001B;
-            exit_keys[2] = 0;
             pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "PSK", "",
                           network_settings_psk,
                           sizeof(network_settings_psk) - 1, 34,
