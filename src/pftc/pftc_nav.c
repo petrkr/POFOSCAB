@@ -568,6 +568,7 @@ static void build_network_settings_text()
 enum nav_state do_network_settings()
 {
     int result;
+    unsigned char last_item;
     unsigned int exit_keys[3];
     exit_keys[0] = 0x000D;
     exit_keys[1] = 0x001B;
@@ -580,6 +581,7 @@ enum nav_state do_network_settings()
     network_settings_psk[0] = 0;
 
     pofo_show_cursor();
+    last_item = 0;
 
     for (;;) {
         if (screen_push(POFO_COORD(1, 1), POFO_COORD(7, 38)) != 0) {
@@ -590,7 +592,7 @@ enum nav_state do_network_settings()
         build_network_settings_text();
 
         result = pofo_menu_show(SETTINGS_MENU_TOP_LEFT,
-                                network_settings_menu_text, 0, 0, 0,
+                                network_settings_menu_text, 0, 0, last_item,
                                 SETTINGS_MENU_TYPE_DEPTH);
 
         if (result == -1) {
@@ -671,6 +673,7 @@ static void build_ip_settings_text()
 enum nav_state do_ip_settings()
 {
     int result;
+    unsigned char last_item;
     unsigned int exit_keys[3];
 
     exit_keys[0] = 0x000D;
@@ -686,6 +689,8 @@ enum nav_state do_ip_settings()
     ip_settings_ipv6 = 0;
 
     pofo_show_cursor();
+    last_item = 0;
+
     for (;;) {
         if (screen_push(POFO_COORD(1, 1), POFO_COORD(7, 38)) != 0) {
             show_out_of_memory_error();
@@ -695,7 +700,7 @@ enum nav_state do_ip_settings()
         build_ip_settings_text();
 
         result = pofo_menu_show(SETTINGS_MENU_TOP_LEFT,
-                                ip_settings_menu_text, 0, 0, 0,
+                                ip_settings_menu_text, 0, 0, last_item,
                                 SETTINGS_MENU_TYPE_DEPTH);
 
         if (result == -1) {
