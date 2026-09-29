@@ -1,11 +1,18 @@
 #ifndef POFO_H
 #define POFO_H
 
+/* Generic split of a packed 16-bit value into its two bytes - several
+   INT 60h calls pack unrelated things into AH/AL or CH/CL (a screen
+   row+col, a menu's top_line+selected item, ...); this is the one
+   macro pair for reading either byte back out, whatever it means. */
+#define POFO_HIGH_BYTE(value) ((unsigned char)((value) >> 8))
+#define POFO_LOW_BYTE(value) ((unsigned char)((value) & 0xff))
+
 /* Pack a row and column into the register layout used by INT 60h/AH=09h. */
 #define POFO_COORD(row, col) \
     ((((unsigned int)(row) & 0xff) << 8) | ((unsigned int)(col) & 0xff))
-#define POFO_COORD_ROW(coord) ((unsigned char)((coord) >> 8))
-#define POFO_COORD_COL(coord) ((unsigned char)((coord) & 0xff))
+#define POFO_COORD_ROW(coord) POFO_HIGH_BYTE(coord)
+#define POFO_COORD_COL(coord) POFO_LOW_BYTE(coord)
 
 /* Bytes needed for a pofo_screen_save/restore buffer covering this
    inclusive top_left..bottom_right range (1 byte per cell). */
