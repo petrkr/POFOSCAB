@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Mock server for the Portfolio File Transfer Configuration client.
 
-Implements HELLO (0x01), GET_NETIFS (0x02), and GET_NETIF (0x03) per the
-design plan (mame-tu-novy-ukol-lovely-book.md). SET_NETIF/GET_IPCFG/
-SET_IPCFG/GET_WIFISCAN are not implemented yet. GET_STATUS (0x08) is an
-ESP-wide device status opcode with no designed response shape yet - not
+Implements HELLO (0x01), GET_NETIFS (0x02), GET_NETIF (0x03), and
+GET_WIFISCAN (0x07) per PFTC_PROTOCOL.md. SET_NETIF/GET_IPCFG/
+SET_IPCFG are not implemented yet. GET_STATUS (0x08) is an ESP-wide
+device status opcode with no designed response shape yet - not
 implemented.
 
-NetifSlot is written MicroPython-portable (no dataclasses, no typing
-imports used at runtime, only stdlib struct/bytes operations) since the
-same class is meant to run on the ESP side, not just in this test mock.
+NetifSlot/WifiScanResult are written MicroPython-portable (no
+dataclasses, no typing imports used at runtime, only stdlib
+struct/bytes operations) since the same classes are meant to run on
+the ESP side, not just in this test mock.
 """
 
 import argparse
@@ -20,11 +21,17 @@ from smartcable_server import SmartCable, receive_atari_block
 PFTC_HELLO = 0x01
 PFTC_GET_NETIFS = 0x02
 PFTC_GET_NETIF = 0x03
+PFTC_GET_WIFISCAN = 0x07
 
 PFTC_OK = 0x20
 PFTC_ERR = 0x10
 PFTC_ERR_UNKNOWN_COMMAND = 0x01
 PFTC_ERR_MALFORMED = 0x02
+PFTC_ERR_NOT_SUPPORTED = 0x04
+
+SECURITY_OPEN = 0x00
+SECURITY_WPA2_PSK = 0x01
+SECURITY_WPA3_PSK = 0x02
 
 MOCK_BUILD_ID = 0xFFFF0000
 MOCK_VERSION = (0, 0, 0)
@@ -102,6 +109,27 @@ class NetifSlot:
         return common_header + type_section
 
 
+class WifiScanResult:
+    """One GET_WIFISCAN entry (see PFTC_PROTOCOL.md's GET_WIFISCAN
+    section). SSID bytes are transmitted exactly as given, unmodified -
+    the protocol allows arbitrary non-ASCII SSIDs, so `ssid` here is
+    already raw bytes, not a str, unlike NetifSlot's ASCII-only ssid.
+    """
+
+    def __init__(self, ssid: bytes, rssi: int, security: int):
+        self.ssid = ssid
+        self.rssi = rssi
+        self.security = security
+
+    def to_bytes(self) -> bytes:
+        return (
+            bytes((len(self.ssid),))
+            + self.ssid
+            + struct.pack("<b", self.rssi)
+            + bytes((self.security,))
+        )
+
+
 # Mock state: a single interface slot, interface=0x00, type=0x01 (WiFi
 # client). Static/fake - no real radio.
 mock_netif = NetifSlot(
@@ -117,6 +145,18 @@ mock_netif = NetifSlot(
     channel=6,
     rssi=-45,
 )
+
+# Mock scan results for interface=0x00. Fixed/fake list, capped at 10
+# entries per the protocol - includes the currently-connected SSID plus
+# a few fabricated neighbors covering each security type and an
+# intentionally non-ASCII SSID to exercise the "raw bytes, no
+# filtering" rule.
+mock_wifiscan_results = [
+    WifiScanResult(ssid=b"MockSSID", rssi=-45, security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"OpenGuest", rssi=-60, security=SECURITY_OPEN),
+    WifiScanResult(ssid=b"Neighbour5G", rssi=-72, security=SECURITY_WPA3_PSK),
+    WifiScanResult(ssid="Caf\xe9WiFi".encode("latin-1"), rssi=-80, security=SECURITY_WPA2_PSK),
+]
 
 
 def build_hello_response() -> bytes:
@@ -142,6 +182,19 @@ def build_netif_response(interface: int) -> bytes:
     if interface != mock_netif.interface:
         return bytes((PFTC_ERR, PFTC_ERR_MALFORMED))
     return bytes((PFTC_OK, 0x00)) + mock_netif.to_bytes(full=True)
+
+
+def build_wifiscan_response(interface: int) -> bytes:
+    if interface != mock_netif.interface:
+        return bytes((PFTC_ERR, PFTC_ERR_MALFORMED))
+    if mock_netif.type != TYPE_WIFI_CLIENT:
+        return bytes((PFTC_ERR, PFTC_ERR_NOT_SUPPORTED))
+
+    results = mock_wifiscan_results[:10]
+    body = bytes((PFTC_OK, 0x00, len(results)))
+    for result in results:
+        body += result.to_bytes()
+    return body
 
 
 def send_block_after_sync(link: SmartCable, payload: bytes) -> bool:
@@ -178,6 +231,11 @@ def handle_packet(payload: bytes) -> bytes:
         interface = payload[1]
         print(f"PFTC GET_NETIF interface={interface}", flush=True)
         return build_netif_response(interface)
+
+    if len(payload) == 2 and payload[0] == PFTC_GET_WIFISCAN:
+        interface = payload[1]
+        print(f"PFTC GET_WIFISCAN interface={interface}", flush=True)
+        return build_wifiscan_response(interface)
 
     print(f"PFTC unknown opcode: {payload!r}", flush=True)
     return bytes((PFTC_ERR, PFTC_ERR_UNKNOWN_COMMAND))
