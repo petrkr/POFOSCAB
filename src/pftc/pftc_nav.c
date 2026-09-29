@@ -549,6 +549,8 @@ static void build_network_settings_text()
     sprintf(line, "Enabled: %s", yesno(network_settings_enabled));
     strcpy(p, line);
     p += strlen(p) + 1;
+    strcpy(p, "Scan");
+    p += strlen(p) + 1;
     sprintf(line, "SSID: %s", network_settings_ssid);
     strcpy(p, line);
     p += strlen(p) + 1;
@@ -560,6 +562,114 @@ static void build_network_settings_text()
     *p = 0;
 }
 
+#define WIFISCAN_MENU_MAX_ITEMS 10
+
+static char wifiscan_menu_text[WIFISCAN_MENU_MAX_ITEMS * (32 + 8) + 32];
+static unsigned char wifiscan_menu_security[WIFISCAN_MENU_MAX_ITEMS];
+
+/* Scans on selected_interface, shows results as a menu (title +
+   "SSID (security, RSSI dBm)" per entry), and on a pick copies the
+   SSID into network_settings_ssid and returns the chosen entry's
+   security in *security_out. ESC picks nothing (returns 0, leaves
+   network_settings_ssid untouched). SSID bytes are shown as-is per
+   PFTC_PROTOCOL.md (no filtering) - non-ASCII SSIDs may render as
+   garbled glyphs on the Portfolio's charset, which is expected. */
+static int do_wifi_scan_menu(security_out)
+unsigned char *security_out;
+{
+    unsigned int received;
+    int status;
+    unsigned char *p;
+    unsigned char count, i, ssid_len;
+    signed char rssi;
+    unsigned char security;
+    char *out;
+    char label[40];
+    unsigned int bottom_right;
+    int result;
+
+    wifiscan_request[1] = selected_interface;
+    pofo_hide_cursor();
+    progress_dialog_open("Scanning");
+    status = smartcable_exchange(wifiscan_request, sizeof(wifiscan_request),
+                           wifiscan_response, sizeof(wifiscan_response),
+                           &received);
+    progress_dialog_close();
+    pofo_show_cursor();
+    if (status != 0) {
+        show_transport_error();
+        return 0;
+    }
+    if (received < 3) {
+        show_protocol_error();
+        return 0;
+    }
+    if (wifiscan_response[0] != 0x20 || wifiscan_response[1] != 0x00) {
+        show_protocol_error();
+        return 0;
+    }
+
+    count = wifiscan_response[2];
+    if (count > WIFISCAN_MENU_MAX_ITEMS)
+        count = WIFISCAN_MENU_MAX_ITEMS;
+
+    out = wifiscan_menu_text;
+    strcpy(out, "Scan results");
+    out += strlen(out) + 1;
+
+    p = wifiscan_response + 3;
+    for (i = 0; i < count; i++) {
+        ssid_len = p[0];
+        if (ssid_len > 32)
+            ssid_len = 32;
+        memcpy(label, p + 1, ssid_len);
+        label[ssid_len] = 0;
+        rssi = (signed char)p[1 + ssid_len];
+        security = p[1 + ssid_len + 1];
+        wifiscan_menu_security[i] = security;
+
+        sprintf(out, "%s (%s, %d)", label,
+                security == PFTC_SECURITY_OPEN ? "open" :
+                security == PFTC_SECURITY_WPA3_PSK ? "WPA3" : "WPA2",
+                rssi);
+        out += strlen(out) + 1;
+
+        p += 1 + ssid_len + 2;
+    }
+    *out = 0;
+
+    pofo_menu_getsize(SETTINGS_MENU_TOP_LEFT, wifiscan_menu_text, 0,
+                       &bottom_right);
+    if (screen_push(SETTINGS_MENU_TOP_LEFT, bottom_right) != 0) {
+        show_out_of_memory_error();
+        return 0;
+    }
+
+    result = pofo_menu_show(SETTINGS_MENU_TOP_LEFT, wifiscan_menu_text,
+                            0, 0, 0, SETTINGS_MENU_TYPE_DEPTH);
+    screen_pop();
+
+    if (result == -1)
+        return 0;
+
+    i = POFO_LOW_BYTE(result);
+    p = wifiscan_response + 3;
+    while (i > 0) {
+        ssid_len = p[0];
+        if (ssid_len > 32)
+            ssid_len = 32;
+        p += 1 + ssid_len + 2;
+        i--;
+    }
+    ssid_len = p[0];
+    if (ssid_len > 32)
+        ssid_len = 32;
+    memcpy(network_settings_ssid, p + 1, ssid_len);
+    network_settings_ssid[ssid_len] = 0;
+    *security_out = wifiscan_menu_security[POFO_LOW_BYTE(result)];
+    return 1;
+}
+
 /* Skeleton only - fields are edited and held in memory, but Apply has
    no SET_NETIF wired up yet (the backend doesn't support it either) -
    reports "Not supported yet." instead of sending anything. Reads
@@ -569,6 +679,7 @@ enum nav_state do_network_settings()
 {
     int result;
     unsigned char last_item;
+    unsigned char scanned_security;
     unsigned int exit_keys[3];
     exit_keys[0] = 0x000D;
     exit_keys[1] = 0x001B;
@@ -607,20 +718,38 @@ enum nav_state do_network_settings()
             network_settings_enabled = !network_settings_enabled;
             break;
         case 1:
+            if (do_wifi_scan_menu(&scanned_security)) {
+                last_item = 2;
+                if (scanned_security != PFTC_SECURITY_OPEN) {
+                    screen_pop();
+                    if (screen_push(POFO_COORD(1, 1), POFO_COORD(7, 38)) != 0) {
+                        show_out_of_memory_error();
+                        return NAV_INTERFACE_MENU;
+                    }
+                    pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "PSK", "",
+                                  network_settings_psk,
+                                  sizeof(network_settings_psk) - 1, 20,
+                                  POFO_EDIT_MODE_CLEAR_ON_ENTRY,
+                                  POFO_EDIT_BOX_DOUBLE, exit_keys);
+                    last_item = 3;
+                }
+            }
+            break;
+        case 2:
             pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "SSID", "",
                           network_settings_ssid,
                           sizeof(network_settings_ssid) - 1, 20,
                           POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
                           exit_keys);
             break;
-        case 2:
+        case 3:
             pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "PSK", "",
                           network_settings_psk,
                           sizeof(network_settings_psk) - 1, 20,
                           POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
                           exit_keys);
             break;
-        case 3:
+        case 4:
             pofo_hide_cursor();
             pofo_error_dialog(DIALOG_TOP_LEFT, not_supported_dialog_text);
             screen_pop();
