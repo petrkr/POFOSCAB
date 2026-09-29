@@ -288,7 +288,7 @@ enum nav_state do_root_menu()
     if (result == -1)
         return NAV_DASHBOARD;
 
-    selected = POFO_COORD_COL(result);
+    selected = POFO_LOW_BYTE(result);
     switch (selected) {
     case 0:
         if (!netif_ok) {
@@ -386,7 +386,7 @@ enum nav_state do_interfaces_list()
     if (result == -1)
         return NAV_ROOT_MENU;
 
-    selected_interface = interfaces_menu_interface[POFO_COORD_COL(result)];
+    selected_interface = interfaces_menu_interface[POFO_LOW_BYTE(result)];
     return NAV_INTERFACE_MENU;
 }
 
@@ -436,7 +436,7 @@ enum nav_state do_interface_menu()
     if (result == -1)
         return NAV_INTERFACES;
 
-    switch (POFO_COORD_COL(result)) {
+    switch (POFO_LOW_BYTE(result)) {
     case 0: return NAV_DETAIL;
     case 1: return NAV_NETWORK_SETTINGS;
     case 2: return NAV_IP_SETTINGS;
@@ -599,7 +599,8 @@ enum nav_state do_network_settings()
             return NAV_INTERFACE_MENU;
         }
 
-        switch (POFO_COORD_COL(result)) {
+        last_item = POFO_LOW_BYTE(result);
+        switch (last_item) {
         case 0:
             network_settings_enabled = !network_settings_enabled;
             break;
@@ -703,7 +704,8 @@ enum nav_state do_ip_settings()
             return NAV_INTERFACE_MENU;
         }
 
-        switch (POFO_COORD_COL(result)) {
+        last_item = POFO_LOW_BYTE(result);
+        switch (last_item) {
         case 0:
             ip_settings_mode_static = !ip_settings_mode_static;
             break;
