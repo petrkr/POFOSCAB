@@ -385,7 +385,61 @@ enum nav_state do_interfaces_list()
         return NAV_ROOT_MENU;
 
     selected_interface = interfaces_menu_interface[POFO_COORD_COL(result)];
-    return NAV_DETAIL;
+    return NAV_INTERFACE_MENU;
+}
+
+#define INTERFACE_MENU_TOP_LEFT POFO_COORD(1, 2)
+#define INTERFACE_MENU_HEIGHT_LIMIT 7
+#define INTERFACE_MENU_TYPE_DEPTH \
+    ((INTERFACE_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
+
+static char interface_menu_text[64];
+
+/* Fetches selected_interface fresh, then shows the Status/Network
+   settings/IP settings menu - all three read the same fetch, no
+   further re-fetch until back out to Interfaces and in again. */
+enum nav_state do_interface_menu()
+{
+    unsigned int bottom_right;
+    int result;
+    char *p;
+
+    if (fetch_netif(selected_interface) != 0)
+        return NAV_INTERFACES;
+
+    p = interface_menu_text;
+    strcpy(p, netif_type_label(netif_type));
+    p += strlen(p) + 1;
+    strcpy(p, "Status");
+    p += strlen(p) + 1;
+    strcpy(p, "Network settings");
+    p += strlen(p) + 1;
+    strcpy(p, "IP settings");
+    p += strlen(p) + 1;
+    *p = 0;
+
+    pofo_menu_getsize(INTERFACE_MENU_TOP_LEFT, interface_menu_text, 0,
+                       &bottom_right);
+    if (screen_push(INTERFACE_MENU_TOP_LEFT, bottom_right) != 0) {
+        show_out_of_memory_error();
+        return NAV_INTERFACES;
+    }
+
+    pofo_show_cursor();
+    result = pofo_menu_show(INTERFACE_MENU_TOP_LEFT, interface_menu_text,
+                            0, 0, 0, INTERFACE_MENU_TYPE_DEPTH);
+    pofo_hide_cursor();
+    screen_pop();
+
+    if (result == -1)
+        return NAV_INTERFACES;
+
+    switch (POFO_COORD_COL(result)) {
+    case 0: return NAV_DETAIL;
+    case 1: return NAV_NETWORK_SETTINGS;
+    case 2: return NAV_IP_SETTINGS;
+    }
+    return NAV_INTERFACES;
 }
 
 #define DETAIL_MENU_TOP_LEFT POFO_COORD(1, 2)
@@ -435,17 +489,14 @@ static void build_detail_text()
     *p = 0; /* double zero terminator */
 }
 
-/* Always re-fetches selected_interface fresh - stale dashboard data is
-   never reused here. A scrollable menu-as-window (see INT60H.md AH=0Fh
-   depth bits) stands in for a real info window - the ROM has no
-   passive scrolling text primitive. ESC or an item pick both just
-   close it -> NAV_INTERFACES. */
+/* Reads whatever do_interface_menu() last fetched - no re-fetch of its
+   own. A scrollable menu-as-window (see INT60H.md AH=0Fh depth bits)
+   stands in for a real info window - the ROM has no passive scrolling
+   text primitive. ESC or an item pick both just close it ->
+   NAV_INTERFACE_MENU. */
 enum nav_state do_interface_detail()
 {
     unsigned int bottom_right;
-
-    if (fetch_netif(selected_interface) != 0)
-        return NAV_INTERFACES;
 
     build_detail_text();
 
@@ -453,7 +504,7 @@ enum nav_state do_interface_detail()
                        &bottom_right);
     if (screen_push(DETAIL_MENU_TOP_LEFT, bottom_right) != 0) {
         show_out_of_memory_error();
-        return NAV_INTERFACES;
+        return NAV_INTERFACE_MENU;
     }
 
     pofo_show_cursor();
@@ -462,7 +513,236 @@ enum nav_state do_interface_detail()
     pofo_hide_cursor();
     screen_pop();
 
-    return NAV_INTERFACES;
+    return NAV_INTERFACE_MENU;
+}
+
+static char not_supported_dialog_text[] = "Not supported yet.";
+
+#define SETTINGS_MENU_TOP_LEFT POFO_COORD(1, 2)
+#define SETTINGS_MENU_HEIGHT_LIMIT 7
+#define SETTINGS_MENU_TYPE_DEPTH \
+    ((SETTINGS_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
+#define SETTINGS_FIELD_MAX 64
+
+static char network_settings_menu_text[SETTINGS_FIELD_MAX * 3 + 32];
+static char network_settings_ssid[33];
+static char network_settings_psk[65];
+static unsigned char network_settings_enabled;
+
+static char *yesno(flag)
+unsigned char flag;
+{
+    return flag ? "Yes" : "No";
+}
+
+static void build_network_settings_text()
+{
+    char *p;
+    char line[SETTINGS_FIELD_MAX];
+
+    p = network_settings_menu_text;
+    strcpy(p, "Network settings");
+    p += strlen(p) + 1;
+    sprintf(line, "Enabled: %s", yesno(network_settings_enabled));
+    strcpy(p, line);
+    p += strlen(p) + 1;
+    sprintf(line, "SSID: %s", network_settings_ssid);
+    strcpy(p, line);
+    p += strlen(p) + 1;
+    sprintf(line, "PSK: %s", network_settings_psk);
+    strcpy(p, line);
+    p += strlen(p) + 1;
+    strcpy(p, "Apply");
+    p += strlen(p) + 1;
+    *p = 0;
+}
+
+/* Skeleton only - fields are edited and held in memory, but Apply has
+   no SET_NETIF wired up yet (the backend doesn't support it either) -
+   reports "Not supported yet." instead of sending anything. Reads
+   whatever do_interface_menu() last fetched into netif_*; no re-fetch
+   of its own. */
+enum nav_state do_network_settings()
+{
+    unsigned int bottom_right;
+    int result;
+    unsigned int exit_keys[3];
+
+    network_settings_enabled = 1;
+    strcpy(network_settings_ssid,
+           (netif_ssid_length != 0xFF && netif_ssid_length != 0xFE) ?
+           netif_ssid : "");
+    network_settings_psk[0] = 0;
+
+    pofo_show_cursor();
+    for (;;) {
+        build_network_settings_text();
+
+        pofo_menu_getsize(SETTINGS_MENU_TOP_LEFT, network_settings_menu_text,
+                          0, &bottom_right);
+        if (screen_push(SETTINGS_MENU_TOP_LEFT, bottom_right) != 0) {
+            pofo_hide_cursor();
+            show_out_of_memory_error();
+            return NAV_INTERFACE_MENU;
+        }
+
+        result = pofo_menu_show(SETTINGS_MENU_TOP_LEFT,
+                                network_settings_menu_text, 0, 0, 0,
+                                SETTINGS_MENU_TYPE_DEPTH);
+        screen_pop();
+
+        if (result == -1) {
+            pofo_hide_cursor();
+            return NAV_INTERFACE_MENU;
+        }
+
+        switch (POFO_COORD_COL(result)) {
+        case 0:
+            network_settings_enabled = !network_settings_enabled;
+            break;
+        case 1:
+            exit_keys[0] = 0x000D;
+            exit_keys[1] = 0x001B;
+            exit_keys[2] = 0;
+            pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "SSID", "",
+                          network_settings_ssid,
+                          sizeof(network_settings_ssid) - 1, 34,
+                          POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
+                          exit_keys);
+            break;
+        case 2:
+            exit_keys[0] = 0x000D;
+            exit_keys[1] = 0x001B;
+            exit_keys[2] = 0;
+            pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "PSK", "",
+                          network_settings_psk,
+                          sizeof(network_settings_psk) - 1, 34,
+                          POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
+                          exit_keys);
+            break;
+        case 3:
+            pofo_hide_cursor();
+            pofo_error_dialog(DIALOG_TOP_LEFT, not_supported_dialog_text);
+            return NAV_INTERFACE_MENU;
+        }
+    }
+}
+
+static char ip_settings_menu_text[SETTINGS_FIELD_MAX * 5 + 32];
+static char ip_settings_ip[16];
+static char ip_settings_netmask[16];
+static char ip_settings_gateway[16];
+static unsigned char ip_settings_mode_static;
+static unsigned char ip_settings_ipv6;
+
+static void build_ip_settings_text()
+{
+    char *p;
+    char line[SETTINGS_FIELD_MAX];
+
+    p = ip_settings_menu_text;
+    strcpy(p, "IP settings");
+    p += strlen(p) + 1;
+    sprintf(line, "Mode: %s", ip_settings_mode_static ? "Static" : "DHCP");
+    strcpy(p, line);
+    p += strlen(p) + 1;
+    sprintf(line, "IP: %s", ip_settings_ip);
+    strcpy(p, line);
+    p += strlen(p) + 1;
+    sprintf(line, "Netmask: %s", ip_settings_netmask);
+    strcpy(p, line);
+    p += strlen(p) + 1;
+    sprintf(line, "Gateway: %s", ip_settings_gateway);
+    strcpy(p, line);
+    p += strlen(p) + 1;
+    sprintf(line, "IPv6: %s", yesno(ip_settings_ipv6));
+    strcpy(p, line);
+    p += strlen(p) + 1;
+    strcpy(p, "Apply");
+    p += strlen(p) + 1;
+    *p = 0;
+}
+
+/* Skeleton only - same as do_network_settings(): fields are held in
+   memory, Apply reports "Not supported yet." instead of sending
+   SET_IPCFG. Starts from netif_*'s runtime IP/netmask/gateway as a
+   read-only-looking default, not from an actual GET_IPCFG fetch (no
+   IPCFG wire code exists yet). */
+enum nav_state do_ip_settings()
+{
+    unsigned int bottom_right;
+    int result;
+    unsigned int exit_keys[3];
+
+    exit_keys[0] = 0x000D;
+    exit_keys[1] = 0x001B;
+    exit_keys[2] = 0;
+
+    sprintf(ip_settings_ip, "%u.%u.%u.%u", netif_ipv4[0], netif_ipv4[1],
+            netif_ipv4[2], netif_ipv4[3]);
+    sprintf(ip_settings_netmask, "%u", netif_netmask_prefix);
+    sprintf(ip_settings_gateway, "%u.%u.%u.%u", netif_gateway[0],
+            netif_gateway[1], netif_gateway[2], netif_gateway[3]);
+    ip_settings_mode_static = 0;
+    ip_settings_ipv6 = 0;
+
+    pofo_show_cursor();
+    for (;;) {
+        build_ip_settings_text();
+
+        pofo_menu_getsize(SETTINGS_MENU_TOP_LEFT, ip_settings_menu_text,
+                          0, &bottom_right);
+        
+
+        if (screen_push(SETTINGS_MENU_TOP_LEFT, bottom_right) != 0) {
+            pofo_hide_cursor();
+            show_out_of_memory_error();
+            return NAV_INTERFACE_MENU;
+        }
+
+        result = pofo_menu_show(SETTINGS_MENU_TOP_LEFT,
+                                ip_settings_menu_text, 0, 0, 0,
+                                SETTINGS_MENU_TYPE_DEPTH);
+        screen_pop();
+
+        if (result == -1) {
+            pofo_hide_cursor();
+            return NAV_INTERFACE_MENU;
+        }
+
+        switch (POFO_COORD_COL(result)) {
+        case 0:
+            ip_settings_mode_static = !ip_settings_mode_static;
+            break;
+        case 1:
+            pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "IP", "",
+                          ip_settings_ip, sizeof(ip_settings_ip) - 1, 17,
+                          POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
+                          exit_keys);
+            break;
+        case 2:
+            pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "Netmask", "",
+                          ip_settings_netmask,
+                          sizeof(ip_settings_netmask) - 1, 17,
+                          POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
+                          exit_keys);
+            break;
+        case 3:
+            pofo_line_edit(SETTINGS_MENU_TOP_LEFT, "Gateway", "",
+                          ip_settings_gateway,
+                          sizeof(ip_settings_gateway) - 1, 17,
+                          POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
+                          exit_keys);
+            break;
+        case 4:
+            ip_settings_ipv6 = !ip_settings_ipv6;
+            break;
+        case 5:
+            pofo_hide_cursor();
+            pofo_error_dialog(DIALOG_TOP_LEFT, not_supported_dialog_text);
+            return NAV_INTERFACE_MENU;
+        }
+    }
 }
 
 enum nav_state do_info_screen()
