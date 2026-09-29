@@ -29,8 +29,17 @@ int main()
         case NAV_INTERFACES:
             state = do_interfaces_list();
             break;
+        case NAV_INTERFACE_MENU:
+            state = do_interface_menu();
+            break;
         case NAV_DETAIL:
             state = do_interface_detail();
+            break;
+        case NAV_NETWORK_SETTINGS:
+            state = do_network_settings();
+            break;
+        case NAV_IP_SETTINGS:
+            state = do_ip_settings();
             break;
         case NAV_INFO:
             state = do_info_screen();
