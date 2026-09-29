@@ -620,12 +620,13 @@ enum nav_state do_network_settings()
             screen_pop();
             return NAV_INTERFACE_MENU;
         }
+        screen_pop();
     }
 }
 
 static char ip_settings_menu_text[SETTINGS_FIELD_MAX * 5 + 32];
 static char ip_settings_ip[16];
-static char ip_settings_netmask[16];
+static char ip_settings_netmask[3];
 static char ip_settings_gateway[16];
 static unsigned char ip_settings_mode_static;
 static unsigned char ip_settings_ipv6;
