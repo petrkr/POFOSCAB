@@ -14,6 +14,18 @@
 #define PFTC_F5          0x3F00
 #define PFTC_ATARI       0x3B00
 
+#define NAV_MENU_TOP_LEFT POFO_COORD(1, 2)
+/* Rows 1-7, intentionally covering the status line too; screen_push/pop
+   restores it once the menu closes. */
+#define NAV_MENU_HEIGHT_LIMIT 7
+#define NAV_MENU_TYPE_DEPTH ((NAV_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
+
+#define INTERFACES_MENU_TOP_LEFT POFO_COORD(1, 2)
+#define INTERFACES_MENU_HEIGHT_LIMIT 7
+#define INTERFACES_MENU_TYPE_DEPTH \
+    ((INTERFACES_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
+#define INTERFACES_MENU_MAX_ITEMS 8
+
 static char status_text[40];
 
 /* Stashed from HELLO for do_info_screen(); valid only when hello_ok. */
@@ -38,7 +50,15 @@ int netif_rssi;
 unsigned char netif_ssid_length;
 char netif_ssid[64];
 
+unsigned char selected_interface;
+
+static char root_menu_text[] = "PFTC\0Interfaces\0Reconnect\0Info\0Exit\0\0";
+static char interfaces_menu_text[INTERFACES_MENU_MAX_ITEMS * 16 + 16];
+static unsigned char interfaces_menu_interface[INTERFACES_MENU_MAX_ITEMS];
+static char edit_backup[65];
+
 char not_supported_dialog_text[] = "Not supported yet.";
+static char offline_dialog_text[] = "Offline - try Reconnect.";
 
 /* Returns 0 on success, non-zero on error (already reported). netif_ok
    stays untouched on failure so a failed refresh keeps old data. */
@@ -257,16 +277,6 @@ enum nav_state do_dashboard()
     }
 }
 
-#define NAV_MENU_TOP_LEFT POFO_COORD(1, 2)
-/* Rows 1-7, intentionally covering the status line too; screen_push/pop
-   restores it once the menu closes. */
-#define NAV_MENU_HEIGHT_LIMIT 7
-#define NAV_MENU_TYPE_DEPTH ((NAV_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
-
-static char root_menu_text[] = "PFTC\0Interfaces\0Reconnect\0Info\0Exit\0\0";
-
-static char offline_dialog_text[] = "Offline - try Reconnect.";
-
 /* ESC -> NAV_DASHBOARD. Interfaces without a fetch yet shows an
    "Offline" dialog and stays in the menu instead of navigating in. */
 enum nav_state do_root_menu()
@@ -308,16 +318,6 @@ enum nav_state do_root_menu()
     }
     return NAV_DASHBOARD;
 }
-
-#define INTERFACES_MENU_TOP_LEFT POFO_COORD(1, 2)
-#define INTERFACES_MENU_HEIGHT_LIMIT 7
-#define INTERFACES_MENU_TYPE_DEPTH \
-    ((INTERFACES_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
-#define INTERFACES_MENU_MAX_ITEMS 8
-
-static char interfaces_menu_text[INTERFACES_MENU_MAX_ITEMS * 16 + 16];
-static unsigned char interfaces_menu_interface[INTERFACES_MENU_MAX_ITEMS];
-unsigned char selected_interface;
 
 char *netif_type_label(type)
 unsigned char type;
@@ -392,9 +392,6 @@ enum nav_state do_interfaces_list()
     return NAV_INTERFACE_MENU;
 }
 
-
-static char edit_backup[65];
-
 /* Shared body for every "edit a field, validate, retry on bad input,
    ESC restores the pre-edit value" prompt in Network/IP settings -
    replaces five near-identical copies of the same loop. validator
@@ -411,7 +408,6 @@ int (*validator)();
 char *error_text;
 unsigned int *exit_keys;
 {
-    unsigned char mode;
     int result;
 
     strcpy(edit_backup, value);

@@ -4,10 +4,26 @@
 #include "pofo.h"
 #include "gui_core.h"
 
+#define SIGNAL_BAR_FULL   0xDB
+#define SIGNAL_BAR_EMPTY  0xB0
+#define SIGNAL_BAR_MIN   -90
+#define SIGNAL_BAR_MAX   -40
+
+#define SCREEN_STACK_MAX 3
+
+struct screen_frame {
+    unsigned int top_left;
+    unsigned int bottom_right;
+    unsigned char *buffer;
+};
+
+/* Screen-save buffers. */
 static unsigned char status_screen_buffer[POFO_SCREEN_SIZE(STATUS_TOP_LEFT, STATUS_BOTTOM_RIGHT)];
 /* Sized for the widest progress_dialog_open() text ("Getting interfaces");
    widen if a longer one is added. */
 static unsigned char dialog_screen_buffer[POFO_SCREEN_SIZE(DIALOG_TOP_LEFT, POFO_COORD(5, 23))];
+static struct screen_frame screen_stack[SCREEN_STACK_MAX];
+static unsigned char screen_stack_depth;
 
 static char progress_dialog_title[] = "";
 static char *progress_dialog_text;
@@ -34,11 +50,6 @@ unsigned char *address;
 {
     printf("%u.%u.%u.%u", address[0], address[1], address[2], address[3]);
 }
-
-#define SIGNAL_BAR_FULL   0xDB
-#define SIGNAL_BAR_EMPTY  0xB0
-#define SIGNAL_BAR_MIN   -90
-#define SIGNAL_BAR_MAX   -40
 
 void print_signal_bar(rssi)
 int rssi;
@@ -95,17 +106,6 @@ void progress_dialog_close()
                                             progress_dialog_title),
                          dialog_screen_buffer);
 }
-
-#define SCREEN_STACK_MAX 3
-
-struct screen_frame {
-    unsigned int top_left;
-    unsigned int bottom_right;
-    unsigned char *buffer;
-};
-
-static struct screen_frame screen_stack[SCREEN_STACK_MAX];
-static unsigned char screen_stack_depth;
 
 int screen_push(top_left, bottom_right)
 unsigned int top_left;
