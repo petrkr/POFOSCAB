@@ -44,12 +44,11 @@ enum nav_state do_interface_menu()
     int result;
     char *p;
 
-    if (fetch_netif(selected_interface) != 0)
+    if (fetch_netif(selected_interface, &menu_netif) != 0)
         return NAV_INTERFACES;
 
     p = interface_menu_text;
-    strcpy(p, netif_type_label(netif_type));
-    p += strlen(p) + 1;
+    p += sprintf(p, netif_type_label(menu_netif.info.type)) + 1;
     memcpy(p, interface_menu_suffix, sizeof(interface_menu_suffix));
 
     pofo_menu_getsize(INTERFACE_MENU_TOP_LEFT, interface_menu_text, 0,
@@ -83,29 +82,32 @@ static void build_detail_text()
     p = detail_menu_text;
     p += sprintf(p, "Interface Detail") + 1;
 
-    if (netif_type == PFTC_WIFI_CLIENT) {
-        if (netif_ssid_length == 0xFF)
+    if (menu_netif.info.type == PFTC_WIFI_CLIENT) {
+        if (menu_netif.ssid_length == 0xFF)
             strcpy(p, "SSID: invalid");
-        else if (netif_ssid_length == 0xFE)
+        else if (menu_netif.ssid_length == 0xFE)
             strcpy(p, "SSID: unavailable");
         else
-            sprintf(p, "SSID: %s", netif_ssid);
+            sprintf(p, "SSID: %s", menu_netif.ssid);
     } else
-        sprintf(p, "Interface %02X", netif_interface);
+        sprintf(p, "Interface %02X", menu_netif.info.interface);
     p += strlen(p) + 1;
 
-    if (netif_type == PFTC_WIFI_CLIENT &&
-        netif_ssid_length != 0xFF && netif_ssid_length != 0xFE) {
-        p += sprintf(p, "RSSI: %d dBm", netif_rssi) + 1;
-        p += sprintf(p, "Channel: %u", netif_channel) + 1;
+    if (menu_netif.info.type == PFTC_WIFI_CLIENT &&
+        menu_netif.ssid_length != 0xFF && menu_netif.ssid_length != 0xFE) {
+        p += sprintf(p, "RSSI: %d dBm", menu_netif.rssi) + 1;
+        p += sprintf(p, "Channel: %u", menu_netif.channel) + 1;
     }
 
-    p += sprintf(p, "IP: %u.%u.%u.%u/%u", netif_ipv4[0], netif_ipv4[1],
-            netif_ipv4[2], netif_ipv4[3], netif_netmask_prefix) + 1;
-    p += sprintf(p, "GW: %u.%u.%u.%u", netif_gateway[0], netif_gateway[1],
-            netif_gateway[2], netif_gateway[3]) + 1;
-    p += sprintf(p, "DNS: %u.%u.%u.%u", netif_dns[0], netif_dns[1],
-            netif_dns[2], netif_dns[3]) + 1;
+    p += sprintf(p, "IP: %u.%u.%u.%u/%u", menu_netif.info.ipv4[0],
+            menu_netif.info.ipv4[1], menu_netif.info.ipv4[2],
+            menu_netif.info.ipv4[3], menu_netif.info.netmask_prefix) + 1;
+    p += sprintf(p, "GW: %u.%u.%u.%u", menu_netif.info.gateway[0],
+            menu_netif.info.gateway[1], menu_netif.info.gateway[2],
+            menu_netif.info.gateway[3]) + 1;
+    p += sprintf(p, "DNS: %u.%u.%u.%u", menu_netif.info.dns[0],
+            menu_netif.info.dns[1], menu_netif.info.dns[2],
+            menu_netif.info.dns[3]) + 1;
 
     *p = 0; /* double zero terminator */
 }
@@ -297,8 +299,8 @@ enum nav_state do_network_settings()
 
     network_settings_enabled = 1;
     strcpy(network_settings_ssid,
-           (netif_ssid_length != 0xFF && netif_ssid_length != 0xFE) ?
-           netif_ssid : "");
+           (menu_netif.ssid_length != 0xFF && menu_netif.ssid_length != 0xFE) ?
+           menu_netif.ssid : "");
     network_settings_psk[0] = 0;
 
     pofo_show_cursor();

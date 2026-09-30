@@ -13,26 +13,37 @@
     ((SETTINGS_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
 #define SETTINGS_FIELD_MAX 64
 
-/* Last successful GET_NETIFS/GET_NETIF fetch; valid only when netif_ok.
-   Populated by do_fetch_netif()/fetch_netif() in gui.c. */
-extern unsigned char netif_ok;
-extern unsigned char netif_interface;
-extern unsigned char netif_type;
-extern unsigned char netif_ipv4[4];
-extern unsigned char netif_netmask_prefix;
-extern unsigned char netif_gateway[4];
-extern unsigned char netif_dns[4];
-extern unsigned char netif_channel;
-extern int netif_rssi;
-extern unsigned char netif_ssid_length;
-extern char netif_ssid[64];
+/* GET_NETIF's struct netif_info plus its WiFi client extension
+   fields (channel/rssi/ssid), parsed separately in fetch_netif() from
+   the bytes right after the fixed struct. ssid_length 0xFF/0xFE are
+   sentinels ("invalid"/"unavailable" - see fetch_netif()). */
+struct netif_wificli {
+    struct netif_info info;
+    unsigned char channel;
+    int rssi;
+    unsigned char ssid_length;
+    char ssid[64];
+};
+
+/* Dashboard's own last-fetched state (GET_NETIF on interface [0], via
+   do_fetch_netif()/handshake or F5) - independent of menu_netif below.
+   Valid only when dashboard_netif_ok. */
+extern unsigned char dashboard_netif_ok;
+extern struct netif_wificli dashboard_netif;
+
+/* Interface menu's own last-fetched state (GET_NETIF on
+   selected_interface, via fetch_netif() at do_interface_menu() entry) -
+   scoped to the menu's lifetime; read by Interface detail/Network
+   settings/IP settings, gone once back out to Interfaces list. */
+extern struct netif_wificli menu_netif;
 
 extern unsigned char selected_interface;
 
 extern char not_supported_dialog_text[];
 
-/* Re-fetches selected_interface. Returns 0 on success, non-zero on
-   error (already reported). netif_ok stays untouched on failure. */
+/* Fetches GET_NETIF for `interface` into `*out`. Returns 0 on success,
+   non-zero on error (already reported); *out is untouched on failure
+   so a failed refresh keeps old data. */
 int fetch_netif();
 
 char *netif_type_label();

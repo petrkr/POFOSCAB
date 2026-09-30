@@ -57,11 +57,13 @@ enum nav_state do_ip_settings()
     exit_keys[1] = 0x001B;
     exit_keys[2] = 0;
 
-    sprintf(ip_settings_ip, "%u.%u.%u.%u", netif_ipv4[0], netif_ipv4[1],
-            netif_ipv4[2], netif_ipv4[3]);
-    sprintf(ip_settings_prefix, "%u", netif_netmask_prefix);
-    sprintf(ip_settings_gateway, "%u.%u.%u.%u", netif_gateway[0],
-            netif_gateway[1], netif_gateway[2], netif_gateway[3]);
+    sprintf(ip_settings_ip, "%u.%u.%u.%u", menu_netif.info.ipv4[0],
+            menu_netif.info.ipv4[1], menu_netif.info.ipv4[2],
+            menu_netif.info.ipv4[3]);
+    sprintf(ip_settings_prefix, "%u", menu_netif.info.netmask_prefix);
+    sprintf(ip_settings_gateway, "%u.%u.%u.%u", menu_netif.info.gateway[0],
+            menu_netif.info.gateway[1], menu_netif.info.gateway[2],
+            menu_netif.info.gateway[3]);
     ip_settings_mode_static = 0;
     ip_settings_ipv6 = 0;
 

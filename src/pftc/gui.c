@@ -35,20 +35,12 @@ static unsigned char hello_version_minor;
 static unsigned char hello_version_patch;
 static unsigned char hello_build_id[4];
 
-/* Last successful GET_NETIFS/GET_NETIF fetch; valid only when netif_ok.
-   Populated by do_fetch_netif(), rendered by draw_dashboard(). Shared
-   with gui_iface.c/gui_ip.c via gui_shared.h. */
-unsigned char netif_ok;
-unsigned char netif_interface;
-unsigned char netif_type;
-unsigned char netif_ipv4[4];
-unsigned char netif_netmask_prefix;
-unsigned char netif_gateway[4];
-unsigned char netif_dns[4];
-unsigned char netif_channel;
-int netif_rssi;
-unsigned char netif_ssid_length;
-char netif_ssid[64];
+/* Dashboard's own fetch; see struct netif_wificli in gui_shared.h. */
+unsigned char dashboard_netif_ok;
+struct netif_wificli dashboard_netif;
+
+/* Interface menu's own fetch; scoped to the menu's lifetime. */
+struct netif_wificli menu_netif;
 
 unsigned char selected_interface;
 
@@ -60,16 +52,18 @@ static char edit_backup[65];
 char not_supported_dialog_text[] = "Not supported yet.";
 static char offline_dialog_text[] = "Offline - try Reconnect.";
 
-/* Returns 0 on success, non-zero on error (already reported). netif_ok
-   stays untouched on failure so a failed refresh keeps old data. */
-int fetch_netif(interface)
+/* Fetches GET_NETIF for `interface` into `*out`. Returns 0 on success,
+   non-zero on error (already reported); *out is untouched on failure
+   so a failed refresh keeps old data. */
+int fetch_netif(interface, out)
 unsigned char interface;
+struct netif_wificli *out;
 {
     unsigned int received;
     unsigned int wifi_size;
     unsigned char *wifi;
     int status;
-    struct netif_response *netif;
+    struct netif_info *netif;
 
     netif_request[1] = interface;
     progress_dialog_open("Getting interface");
@@ -80,59 +74,45 @@ unsigned char interface;
         show_transport_error();
         return 1;
     }
-    if (received < sizeof(struct netif_response)) {
+    if (received < sizeof(struct netif_info)) {
         show_protocol_error();
         return 1;
     }
-    netif = (struct netif_response *)response;
+    netif = (struct netif_info *)response;
     if (netif->error != 0) {
         show_protocol_error();
         return 1;
     }
 
-    netif_interface = netif->interface;
-    netif_type = netif->type;
-    netif_ipv4[0] = netif->ipv4[0];
-    netif_ipv4[1] = netif->ipv4[1];
-    netif_ipv4[2] = netif->ipv4[2];
-    netif_ipv4[3] = netif->ipv4[3];
-    netif_netmask_prefix = netif->netmask_prefix;
-    netif_gateway[0] = netif->gateway[0];
-    netif_gateway[1] = netif->gateway[1];
-    netif_gateway[2] = netif->gateway[2];
-    netif_gateway[3] = netif->gateway[3];
-    netif_dns[0] = netif->dns[0];
-    netif_dns[1] = netif->dns[1];
-    netif_dns[2] = netif->dns[2];
-    netif_dns[3] = netif->dns[3];
+    out->info = *netif;
 
-    netif_channel = 0;
-    netif_rssi = -128;
-    netif_ssid_length = 0;
+    out->channel = 0;
+    out->rssi = -128;
+    out->ssid_length = 0;
     if (netif->type == PFTC_WIFI_CLIENT) {
-        wifi = response + sizeof(struct netif_response);
-        wifi_size = received - sizeof(struct netif_response);
+        wifi = response + sizeof(struct netif_info);
+        wifi_size = received - sizeof(struct netif_info);
         if (wifi_size >= 3) {
-            netif_channel = wifi[0];
-            netif_rssi = (signed char)wifi[1];
-            netif_ssid_length = wifi[2];
-            if (netif_ssid_length > sizeof(netif_ssid) - 1)
-                netif_ssid_length = sizeof(netif_ssid) - 1;
+            out->channel = wifi[0];
+            out->rssi = (signed char)wifi[1];
+            out->ssid_length = wifi[2];
+            if (out->ssid_length > sizeof(out->ssid) - 1)
+                out->ssid_length = sizeof(out->ssid) - 1;
             if (wifi_size >= (unsigned int)wifi[2] + 3) {
-                memcpy(netif_ssid, wifi + 3, netif_ssid_length);
-                netif_ssid[netif_ssid_length] = 0;
+                memcpy(out->ssid, wifi + 3, out->ssid_length);
+                out->ssid[out->ssid_length] = 0;
             } else
-                netif_ssid_length = 0xFF; /* sentinel: "invalid" */
+                out->ssid_length = 0xFF; /* sentinel: "invalid" */
         } else
-            netif_ssid_length = 0xFE; /* sentinel: "unavailable" */
+            out->ssid_length = 0xFE; /* sentinel: "unavailable" */
     }
 
-    netif_ok = 1;
     return 0;
 }
 
-/* Returns 0 on success, non-zero on error (already reported). netif_ok
-   stays untouched on failure so a failed refresh keeps old data. */
+/* Returns 0 on success, non-zero on error (already reported).
+   dashboard_netif_ok stays untouched on failure so a failed refresh
+   keeps old data. */
 static int do_fetch_netif()
 {
     unsigned int received;
@@ -160,7 +140,10 @@ static int do_fetch_netif()
         return 1;
     }
 
-    return fetch_netif(netifs->entries[0].interface);
+    if (fetch_netif(netifs->entries[0].interface, &dashboard_netif) != 0)
+        return 1;
+    dashboard_netif_ok = 1;
+    return 0;
 }
 
 enum nav_state do_handshake()
@@ -194,10 +177,7 @@ enum nav_state do_handshake()
     hello_version_major = hello->version_major;
     hello_version_minor = hello->version_minor;
     hello_version_patch = hello->version_patch;
-    hello_build_id[0] = hello->build_id[0];
-    hello_build_id[1] = hello->build_id[1];
-    hello_build_id[2] = hello->build_id[2];
-    hello_build_id[3] = hello->build_id[3];
+    memcpy(hello_build_id, hello->build_id, sizeof(hello_build_id));
     hello_ok = 1;
 
     sprintf(status_text, "Connected v%u.%u.%u (%02X%02X%02X%02X)",
@@ -213,45 +193,45 @@ enum nav_state do_handshake()
 
 static void draw_dashboard()
 {
-    if (!netif_ok) {
+    if (!dashboard_netif_ok) {
         status_set("Offline");
         return;
     }
 
     gotoxy(2, 1);
-    if (netif_type == PFTC_WIFI_CLIENT) {
-        if (netif_ssid_length == 0xFF)
+    if (dashboard_netif.info.type == PFTC_WIFI_CLIENT) {
+        if (dashboard_netif.ssid_length == 0xFF)
             printf("SSID: invalid");
-        else if (netif_ssid_length == 0xFE)
+        else if (dashboard_netif.ssid_length == 0xFE)
             printf("SSID: unavailable");
         else {
-            printf("SSID: %s", netif_ssid);
+            printf("SSID: %s", dashboard_netif.ssid);
             fflush(stdout);
             gotoxy(38 - SIGNAL_BAR_LEVELS - 3, 1);
             putchar(' ');
             putchar((unsigned char)0xB3);
             putchar(' ');
-            print_signal_bar(netif_rssi);
+            print_signal_bar(dashboard_netif.rssi);
         }
     } else
-        printf("Interface %02X", netif_interface);
+        printf("Interface %02X", dashboard_netif.info.interface);
     fflush(stdout);
 
     gotoxy(2, 2);
     printf("IP: ");
-    print_ipv4(netif_ipv4);
-    printf("/%u", netif_netmask_prefix);
+    print_ipv4(dashboard_netif.info.ipv4);
+    printf("/%u", dashboard_netif.info.netmask_prefix);
     fflush(stdout);
     gotoxy(2, 3);
     printf("GW: ");
-    print_ipv4(netif_gateway);
+    print_ipv4(dashboard_netif.info.gateway);
     fflush(stdout);
     gotoxy(2, 4);
     printf("DNS: ");
-    print_ipv4(netif_dns);
+    print_ipv4(dashboard_netif.info.dns);
     fflush(stdout);
     gotoxy(2, 5);
-    printf("CH%u", netif_channel);
+    printf("CH%u", dashboard_netif.channel);
     fflush(stdout);
 }
 
@@ -303,7 +283,7 @@ enum nav_state do_root_menu()
     selected = POFO_LOW_BYTE(result);
     switch (selected) {
     case 0:
-        if (!netif_ok) {
+        if (!dashboard_netif_ok) {
             pofo_error_dialog(NAV_MENU_TOP_LEFT, offline_dialog_text);
             return NAV_ROOT_MENU;
         }
@@ -367,8 +347,7 @@ enum nav_state do_interfaces_list()
     *p++ = 0; /* no title */
     for (i = 0; i < count; i++) {
         interfaces_menu_interface[i] = netifs->entries[i].interface;
-        strcpy(p, netif_type_label(netifs->entries[i].type));
-        p += strlen(p) + 1;
+        p += sprintf(p, netif_type_label(netifs->entries[i].type)) + 1;
     }
     *p = 0; /* double zero terminator */
 

@@ -35,7 +35,7 @@ struct netifs_response {
     struct netif_entry entries[1];
 };
 
-struct netif_response {
+struct netif_info {
     unsigned char status;
     unsigned char error;
     unsigned char interface;
