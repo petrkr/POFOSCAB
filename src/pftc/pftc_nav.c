@@ -786,6 +786,8 @@ static char ip_settings_gateway[16];
 static unsigned char ip_settings_mode_static;
 static unsigned char ip_settings_ipv6;
 
+/* Under DHCP, only Mode/IPv6/Apply are shown - no point offering
+   IP/Prefix/Gateway for fields DHCP overwrites anyway. */
 static void build_ip_settings_text()
 {
     char *p;
@@ -797,15 +799,17 @@ static void build_ip_settings_text()
     sprintf(line, "Mode: %s", ip_settings_mode_static ? "Static" : "DHCP");
     strcpy(p, line);
     p += strlen(p) + 1;
-    sprintf(line, "IP: %s", ip_settings_ip);
-    strcpy(p, line);
-    p += strlen(p) + 1;
-    sprintf(line, "Prefix: %s", ip_settings_prefix);
-    strcpy(p, line);
-    p += strlen(p) + 1;
-    sprintf(line, "Gateway: %s", ip_settings_gateway);
-    strcpy(p, line);
-    p += strlen(p) + 1;
+    if (ip_settings_mode_static) {
+        sprintf(line, "IP: %s", ip_settings_ip);
+        strcpy(p, line);
+        p += strlen(p) + 1;
+        sprintf(line, "Prefix: %s", ip_settings_prefix);
+        strcpy(p, line);
+        p += strlen(p) + 1;
+        sprintf(line, "Gateway: %s", ip_settings_gateway);
+        strcpy(p, line);
+        p += strlen(p) + 1;
+    }
     sprintf(line, "IPv6: %s", yesno(ip_settings_ipv6));
     strcpy(p, line);
     p += strlen(p) + 1;
@@ -859,9 +863,28 @@ enum nav_state do_ip_settings()
         }
 
         last_item = POFO_LOW_BYTE(result);
+        if (!ip_settings_mode_static) {
+            /* DHCP: only Mode(0)/IPv6(1)/Apply(2) are on screen. */
+            switch (last_item) {
+            case 0:
+                ip_settings_mode_static = 1;
+                break;
+            case 1:
+                ip_settings_ipv6 = !ip_settings_ipv6;
+                break;
+            case 2:
+                pofo_hide_cursor();
+                pofo_error_dialog(DIALOG_TOP_LEFT, not_supported_dialog_text);
+                screen_pop();
+                return NAV_INTERFACE_MENU;
+            }
+            screen_pop();
+            continue;
+        }
+
         switch (last_item) {
         case 0:
-            ip_settings_mode_static = !ip_settings_mode_static;
+            ip_settings_mode_static = 0;
             break;
         case 1:
             pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "IP", "",
