@@ -823,26 +823,69 @@ static char invalid_prefix_dialog_text[] = "Prefix must be 0-32.";
    per octet (so "999.999.999.999" slips through) - Apply is "Not
    supported yet" regardless, so a stricter parse buys nothing here.
    "" doesn't parse as valid either, same as any other bad value. */
+/* Full parse: 4 dot-separated octets, each 0-255. Hand-written in asm -
+   the equivalent C loop (digit accumulation, octet/digit counters,
+   three exit conditions) costs noticeably more in the small memory
+   model's calling convention than the same logic written directly. */
 static int is_valid_ipv4(text)
 char *text;
 {
-    unsigned char dots, digits;
-
-    dots = 0;
-    digits = 0;
-    for (;; text++) {
-        if (*text >= '0' && *text <= '9') {
-            digits++;
-            if (digits > 3)
-                return 0;
-        } else if (*text == '.') {
-            if (digits == 0 || ++dots > 3)
-                return 0;
-            digits = 0;
-        } else
-            break;
-    }
-    return *text == 0 && digits > 0 && dots == 3;
+#asm
+    push si
+    push di
+    push bp
+    mov bx,sp
+    mov si,8[bx]
+    xor bx,bx
+.ipv4_octet:
+    xor bp,bp
+    xor cx,cx
+.ipv4_digit:
+    mov al,[si]
+    cmp al,#$30
+    jb .ipv4_digit_done
+    cmp al,#$39
+    ja .ipv4_digit_done
+    cmp cl,#3
+    jae .ipv4_fail
+    sub al,#$30
+    xor ah,ah
+    mov di,ax
+    mov ax,bp
+    mov bp,#10
+    mul bp
+    add ax,di
+    mov bp,ax
+    inc cl
+    inc si
+    jmp .ipv4_digit
+.ipv4_digit_done:
+    or cl,cl
+    jz .ipv4_fail
+    cmp bp,#255
+    ja .ipv4_fail
+    inc bl
+    mov al,[si]
+    or al,al
+    jz .ipv4_done
+    cmp al,#$2E
+    jne .ipv4_fail
+    cmp bl,#4
+    je .ipv4_fail
+    inc si
+    jmp .ipv4_octet
+.ipv4_done:
+    cmp bl,#4
+    jne .ipv4_fail
+    mov ax,#1
+    jmp .ipv4_exit
+.ipv4_fail:
+    xor ax,ax
+.ipv4_exit:
+    pop bp
+    pop di
+    pop si
+#endasm
 }
 
 static int is_valid_prefix(text)
