@@ -7,8 +7,8 @@ PFTD_BIN := $(BUILD_DIR)/PFTD.COM
 POFO_LIB_SRC := src/pofo/pofo_box.c src/pofo/pofo_dialog.c src/pofo/pofo_edit.c src/pofo/pofo_menu.c src/pofo/pofo_screen.c
 
 PFTC_SRC := src/pftc/pftc.c
-PFTC_SUPPORT_SRC := $(POFO_LIB_SRC) src/pofo/smartcable.c src/pftc/pftc_proto.c src/pftc/pftc_gui.c src/pftc/pftc_valid.c src/pftc/pftc_nav.c
-PFTC_HEADERS := src/pofo/pofo.h src/pofo/smartcable.h src/pftc/pftc_proto.h src/pftc/pftc_gui.h src/pftc/pftc_nav.h
+PFTC_SUPPORT_SRC := $(POFO_LIB_SRC) src/pofo/smartcable.c src/pftc/pftc_proto.c src/pftc/pftc_gui.c src/pftc/pftc_valid.c src/pftc/pftc_nav.c src/pftc/pftc_iface.c src/pftc/pftc_ip.c
+PFTC_HEADERS := src/pofo/pofo.h src/pofo/smartcable.h src/pftc/pftc_proto.h src/pftc/pftc_gui.h src/pftc/pftc_nav.h src/pftc/pftc_valid.h src/pftc/pftc_nav_shared.h
 PFTC_BIN := $(BUILD_DIR)/PFTC.COM
 
 NASM ?= nasm
