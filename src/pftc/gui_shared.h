@@ -20,7 +20,7 @@
 struct netif_wificli {
     struct netif_info info;
     unsigned char channel;
-    int rssi;
+    signed char rssi;
     unsigned char ssid_length;
     char ssid[64];
 };
