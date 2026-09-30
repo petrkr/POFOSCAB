@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <conio.h>
 #include "pofo.h"
-#include "pftc_gui.h"
-#include "pftc_nav.h"
+#include "gui_core.h"
+#include "gui.h"
 
 int main()
 {

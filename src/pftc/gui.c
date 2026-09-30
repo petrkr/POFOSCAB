@@ -4,10 +4,10 @@
 #include "pofo.h"
 #include "smartcable.h"
 #include "pftc_proto.h"
-#include "pftc_gui.h"
-#include "pftc_nav.h"
-#include "pftc_valid.h"
-#include "pftc_nav_shared.h"
+#include "gui_core.h"
+#include "gui.h"
+#include "valid.h"
+#include "gui_shared.h"
 
 #define PFTC_CTRL_Q      0x1011
 #define PFTC_F9          0x4300
@@ -25,7 +25,7 @@ static unsigned char hello_build_id[4];
 
 /* Last successful GET_NETIFS/GET_NETIF fetch; valid only when netif_ok.
    Populated by do_fetch_netif(), rendered by draw_dashboard(). Shared
-   with pftc_iface.c/pftc_ip.c via pftc_nav_shared.h. */
+   with gui_iface.c/gui_ip.c via gui_shared.h. */
 unsigned char netif_ok;
 unsigned char netif_interface;
 unsigned char netif_type;
