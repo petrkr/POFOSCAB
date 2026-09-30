@@ -14,8 +14,26 @@
 #define INTERFACE_MENU_TYPE_DEPTH \
     ((INTERFACE_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
 
+#define DETAIL_MENU_TOP_LEFT POFO_COORD(1, 2)
+#define DETAIL_MENU_HEIGHT_LIMIT 7
+#define DETAIL_MENU_TYPE_DEPTH \
+    ((DETAIL_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
+
+#define WIFISCAN_MENU_MAX_ITEMS 10
+
+/* Per-screen menu text buffers. */
 static char interface_menu_text[64];
+static char detail_menu_text[256];
+static char network_settings_menu_text[SETTINGS_FIELD_MAX * 3 + 32];
+static char wifiscan_menu_text[WIFISCAN_MENU_MAX_ITEMS * (32 + 8) + 32];
+
 static char interface_menu_suffix[] = "Status\0Network settings\0IP settings\0\0";
+static char network_settings_ssid[33];
+static char network_settings_psk[65];
+static unsigned char network_settings_enabled;
+static unsigned char wifiscan_menu_security[WIFISCAN_MENU_MAX_ITEMS];
+
+static char invalid_psk_dialog_text[] = "PSK must be 8-63 chars, or empty.";
 
 /* Fetches selected_interface fresh, then shows the Status/Network
    settings/IP settings menu - all three read the same fetch, no
@@ -57,13 +75,6 @@ enum nav_state do_interface_menu()
     }
     return NAV_INTERFACES;
 }
-
-#define DETAIL_MENU_TOP_LEFT POFO_COORD(1, 2)
-#define DETAIL_MENU_HEIGHT_LIMIT 7
-#define DETAIL_MENU_TYPE_DEPTH \
-    ((DETAIL_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
-
-static char detail_menu_text[256];
 
 static void build_detail_text()
 {
@@ -126,11 +137,6 @@ enum nav_state do_interface_detail()
     return NAV_INTERFACE_MENU;
 }
 
-static char network_settings_menu_text[SETTINGS_FIELD_MAX * 3 + 32];
-static char network_settings_ssid[33];
-static char network_settings_psk[65];
-static unsigned char network_settings_enabled;
-
 char *yesno(flag)
 unsigned char flag;
 {
@@ -143,8 +149,6 @@ char *text;
 {
     return 1;
 }
-
-static char invalid_psk_dialog_text[] = "PSK must be 8-63 chars, or empty.";
 
 /* Empty is valid (open network, or "leave unset"); anything else must
    meet WPA2/WPA3's 8-63 printable-ASCII passphrase length. */
@@ -174,11 +178,6 @@ static void build_network_settings_text()
     p += sprintf(p, "Apply") + 1;
     *p = 0;
 }
-
-#define WIFISCAN_MENU_MAX_ITEMS 10
-
-static char wifiscan_menu_text[WIFISCAN_MENU_MAX_ITEMS * (32 + 8) + 32];
-static unsigned char wifiscan_menu_security[WIFISCAN_MENU_MAX_ITEMS];
 
 /* Scans on selected_interface, shows results as a menu (title +
    "SSID (security, RSSI dBm)" per entry), and on a pick copies the
