@@ -6,6 +6,7 @@
 #include "pftc_proto.h"
 #include "pftc_gui.h"
 #include "pftc_nav.h"
+#include "pftc_valid.h"
 
 #define PFTC_CTRL_Q      0x1011
 #define PFTC_F9          0x4300
@@ -823,87 +824,6 @@ static char invalid_prefix_dialog_text[] = "Prefix must be 0-32.";
    per octet (so "999.999.999.999" slips through) - Apply is "Not
    supported yet" regardless, so a stricter parse buys nothing here.
    "" doesn't parse as valid either, same as any other bad value. */
-/* Full parse: 4 dot-separated octets, each 0-255. Hand-written in asm -
-   the equivalent C loop (digit accumulation, octet/digit counters,
-   three exit conditions) costs noticeably more in the small memory
-   model's calling convention than the same logic written directly. */
-static int is_valid_ipv4(text)
-char *text;
-{
-#asm
-    push si
-    push di
-    push bp
-    mov bx,sp
-    mov si,8[bx]
-    xor bx,bx
-.ipv4_octet:
-    xor bp,bp
-    xor cx,cx
-.ipv4_digit:
-    mov al,[si]
-    cmp al,#$30
-    jb .ipv4_digit_done
-    cmp al,#$39
-    ja .ipv4_digit_done
-    cmp cl,#3
-    jae .ipv4_fail
-    sub al,#$30
-    xor ah,ah
-    mov di,ax
-    mov ax,bp
-    mov bp,#10
-    mul bp
-    add ax,di
-    mov bp,ax
-    inc cl
-    inc si
-    jmp .ipv4_digit
-.ipv4_digit_done:
-    or cl,cl
-    jz .ipv4_fail
-    cmp bp,#255
-    ja .ipv4_fail
-    inc bl
-    mov al,[si]
-    or al,al
-    jz .ipv4_done
-    cmp al,#$2E
-    jne .ipv4_fail
-    cmp bl,#4
-    je .ipv4_fail
-    inc si
-    jmp .ipv4_octet
-.ipv4_done:
-    cmp bl,#4
-    jne .ipv4_fail
-    mov ax,#1
-    jmp .ipv4_exit
-.ipv4_fail:
-    xor ax,ax
-.ipv4_exit:
-    pop bp
-    pop di
-    pop si
-#endasm
-}
-
-static int is_valid_prefix(text)
-char *text;
-{
-    unsigned int value;
-    unsigned char digit_count;
-
-    value = 0;
-    digit_count = 0;
-    while (*text >= '0' && *text <= '9') {
-        value = value * 10 + (*text - '0');
-        digit_count++;
-        text++;
-    }
-    return digit_count > 0 && *text == 0 && value <= 32;
-}
-
 /* Under DHCP, only Mode/IPv6/Apply are shown - no point offering
    IP/Prefix/Gateway for fields DHCP overwrites anyway. */
 static void build_ip_settings_text()
