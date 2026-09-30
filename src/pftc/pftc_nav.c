@@ -10,7 +10,6 @@
 #define PFTC_CTRL_Q      0x1011
 #define PFTC_F9          0x4300
 #define PFTC_F5          0x3F00
-#define PFTC_ESC         0x011B
 #define PFTC_ATARI       0x3B00
 
 static char status_text[40];
@@ -522,6 +521,44 @@ enum nav_state do_interface_detail()
 #define SETTINGS_MENU_TOP_LEFT POFO_COORD(1, 2)
 #define SETTINGS_EDIT_TOP_LEFT POFO_COORD(3, 12)
 
+static char edit_backup[65];
+
+/* Shared body for every "edit a field, validate, retry on bad input,
+   ESC restores the pre-edit value" prompt in Network/IP settings -
+   replaces five near-identical copies of the same loop. validator
+   returns non-zero for an acceptable value; error_text is shown and
+   the same field re-opened (KEEP_ON_ENTRY, so the bad text stays
+   visible) until it passes or the user backs out with ESC. */
+static void edit_field_validated(title, value, max, width, validator,
+                                 error_text, exit_keys)
+char *title;
+char *value;
+unsigned int max;
+unsigned char width;
+int (*validator)();
+char *error_text;
+unsigned int *exit_keys;
+{
+    unsigned char mode;
+    int result;
+
+    strcpy(edit_backup, value);
+    mode = POFO_EDIT_MODE_CLEAR_ON_ENTRY;
+    for (;;) {
+        result = pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, title, "", value,
+                                max, width, mode, POFO_EDIT_BOX_DOUBLE,
+                                exit_keys);
+        if (result == 0x001B) {
+            strcpy(value, edit_backup);
+            return;
+        }
+        if (validator(value))
+            return;
+        pofo_error_dialog(DIALOG_TOP_LEFT, error_text);
+        mode = POFO_EDIT_MODE_KEEP_ON_ENTRY;
+    }
+}
+
 #define SETTINGS_MENU_HEIGHT_LIMIT 7
 #define SETTINGS_MENU_TYPE_DEPTH \
     ((SETTINGS_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
@@ -536,6 +573,13 @@ static char *yesno(flag)
 unsigned char flag;
 {
     return flag ? "Yes" : "No";
+}
+
+/* SSID has no format rule beyond the field's own max length. */
+static int is_valid_always(text)
+char *text;
+{
+    return 1;
 }
 
 static char invalid_psk_dialog_text[] = "PSK must be 8-63 chars, or empty.";
@@ -601,7 +645,7 @@ unsigned char *security_out;
     signed char rssi;
     unsigned char security;
     char *out;
-    char label[40];
+    char label[33];
     unsigned int bottom_right;
     int result;
 
@@ -695,11 +739,8 @@ unsigned char *security_out;
 enum nav_state do_network_settings()
 {
     int result;
-    int edit_result;
-    unsigned char edit_mode;
     unsigned char last_item;
     unsigned char scanned_security;
-    char edit_backup[65];
     unsigned int exit_keys[3];
     exit_keys[0] = 0x000D;
     exit_keys[1] = 0x001B;
@@ -762,54 +803,24 @@ enum nav_state do_network_settings()
                         show_out_of_memory_error();
                         return NAV_INTERFACE_MENU;
                     }
-                    strcpy(edit_backup, network_settings_psk);
-                    edit_mode = POFO_EDIT_MODE_CLEAR_ON_ENTRY;
-                    for (;;) {
-                        edit_result = pofo_line_edit(SETTINGS_EDIT_TOP_LEFT,
-                                      "PSK", "", network_settings_psk,
-                                      sizeof(network_settings_psk) - 1, 20,
-                                      edit_mode, POFO_EDIT_BOX_DOUBLE,
-                                      exit_keys);
-                        if (edit_result == 0x001B) {
-                            strcpy(network_settings_psk, edit_backup);
-                            break;
-                        }
-                        if (is_valid_psk(network_settings_psk))
-                            break;
-                        pofo_error_dialog(DIALOG_TOP_LEFT,
-                                          invalid_psk_dialog_text);
-                        edit_mode = POFO_EDIT_MODE_KEEP_ON_ENTRY;
-                    }
+                    edit_field_validated("PSK", network_settings_psk,
+                                         sizeof(network_settings_psk) - 1, 20,
+                                         is_valid_psk, invalid_psk_dialog_text,
+                                         exit_keys);
                     last_item = 3;
                 }
             }
             break;
         case 2:
-            strcpy(edit_backup, network_settings_ssid);
-            if (pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "SSID", "",
-                          network_settings_ssid,
-                          sizeof(network_settings_ssid) - 1, 20,
-                          POFO_EDIT_MODE_CLEAR_ON_ENTRY, POFO_EDIT_BOX_DOUBLE,
-                          exit_keys) == 0x001B)
-                strcpy(network_settings_ssid, edit_backup);
+            edit_field_validated("SSID", network_settings_ssid,
+                                 sizeof(network_settings_ssid) - 1, 20,
+                                 is_valid_always, "", exit_keys);
             break;
         case 3:
-            strcpy(edit_backup, network_settings_psk);
-            edit_mode = POFO_EDIT_MODE_CLEAR_ON_ENTRY;
-            for (;;) {
-                edit_result = pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "PSK", "",
-                              network_settings_psk,
-                              sizeof(network_settings_psk) - 1, 20,
-                              edit_mode, POFO_EDIT_BOX_DOUBLE, exit_keys);
-                if (edit_result == 0x001B) {
-                    strcpy(network_settings_psk, edit_backup);
-                    break;
-                }
-                if (is_valid_psk(network_settings_psk))
-                    break;
-                pofo_error_dialog(DIALOG_TOP_LEFT, invalid_psk_dialog_text);
-                edit_mode = POFO_EDIT_MODE_KEEP_ON_ENTRY;
-            }
+            edit_field_validated("PSK", network_settings_psk,
+                                 sizeof(network_settings_psk) - 1, 20,
+                                 is_valid_psk, invalid_psk_dialog_text,
+                                 exit_keys);
             break;
         case 4:
             pofo_hide_cursor();
@@ -917,10 +928,7 @@ static void build_ip_settings_text()
 enum nav_state do_ip_settings()
 {
     int result;
-    int edit_result;
-    unsigned char edit_mode;
     unsigned char last_item;
-    char edit_backup[65];
     unsigned int exit_keys[3];
 
     exit_keys[0] = 0x000D;
@@ -981,57 +989,22 @@ enum nav_state do_ip_settings()
             ip_settings_mode_static = 0;
             break;
         case 1:
-            strcpy(edit_backup, ip_settings_ip);
-            edit_mode = POFO_EDIT_MODE_CLEAR_ON_ENTRY;
-            for (;;) {
-                edit_result = pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "IP", "",
-                              ip_settings_ip, sizeof(ip_settings_ip) - 1, 18,
-                              edit_mode, POFO_EDIT_BOX_DOUBLE, exit_keys);
-                if (edit_result == 0x001B) {
-                    strcpy(ip_settings_ip, edit_backup);
-                    break;
-                }
-                if (is_valid_ipv4(ip_settings_ip))
-                    break;
-                pofo_error_dialog(DIALOG_TOP_LEFT, invalid_ipv4_dialog_text);
-                edit_mode = POFO_EDIT_MODE_KEEP_ON_ENTRY;
-            }
+            edit_field_validated("IP", ip_settings_ip,
+                                 sizeof(ip_settings_ip) - 1, 18,
+                                 is_valid_ipv4, invalid_ipv4_dialog_text,
+                                 exit_keys);
             break;
         case 2:
-            strcpy(edit_backup, ip_settings_prefix);
-            edit_mode = POFO_EDIT_MODE_CLEAR_ON_ENTRY;
-            for (;;) {
-                edit_result = pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "Prefix", "",
-                              ip_settings_prefix,
-                              sizeof(ip_settings_prefix) - 1, 12,
-                              edit_mode, POFO_EDIT_BOX_DOUBLE, exit_keys);
-                if (edit_result == 0x001B) {
-                    strcpy(ip_settings_prefix, edit_backup);
-                    break;
-                }
-                if (is_valid_prefix(ip_settings_prefix))
-                    break;
-                pofo_error_dialog(DIALOG_TOP_LEFT, invalid_prefix_dialog_text);
-                edit_mode = POFO_EDIT_MODE_KEEP_ON_ENTRY;
-            }
+            edit_field_validated("Prefix", ip_settings_prefix,
+                                 sizeof(ip_settings_prefix) - 1, 12,
+                                 is_valid_prefix, invalid_prefix_dialog_text,
+                                 exit_keys);
             break;
         case 3:
-            strcpy(edit_backup, ip_settings_gateway);
-            edit_mode = POFO_EDIT_MODE_CLEAR_ON_ENTRY;
-            for (;;) {
-                edit_result = pofo_line_edit(SETTINGS_EDIT_TOP_LEFT, "Gateway", "",
-                              ip_settings_gateway,
-                              sizeof(ip_settings_gateway) - 1, 18,
-                              edit_mode, POFO_EDIT_BOX_DOUBLE, exit_keys);
-                if (edit_result == 0x001B) {
-                    strcpy(ip_settings_gateway, edit_backup);
-                    break;
-                }
-                if (is_valid_ipv4(ip_settings_gateway))
-                    break;
-                pofo_error_dialog(DIALOG_TOP_LEFT, invalid_ipv4_dialog_text);
-                edit_mode = POFO_EDIT_MODE_KEEP_ON_ENTRY;
-            }
+            edit_field_validated("Gateway", ip_settings_gateway,
+                                 sizeof(ip_settings_gateway) - 1, 18,
+                                 is_valid_ipv4, invalid_ipv4_dialog_text,
+                                 exit_keys);
             break;
         case 4:
             ip_settings_ipv6 = !ip_settings_ipv6;
