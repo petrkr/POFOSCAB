@@ -395,6 +395,7 @@ enum nav_state do_interfaces_list()
     ((INTERFACE_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
 
 static char interface_menu_text[64];
+static char interface_menu_suffix[] = "Status\0Network settings\0IP settings\0\0";
 
 /* Fetches selected_interface fresh, then shows the Status/Network
    settings/IP settings menu - all three read the same fetch, no
@@ -411,13 +412,7 @@ enum nav_state do_interface_menu()
     p = interface_menu_text;
     strcpy(p, netif_type_label(netif_type));
     p += strlen(p) + 1;
-    strcpy(p, "Status");
-    p += strlen(p) + 1;
-    strcpy(p, "Network settings");
-    p += strlen(p) + 1;
-    strcpy(p, "IP settings");
-    p += strlen(p) + 1;
-    *p = 0;
+    memcpy(p, interface_menu_suffix, sizeof(interface_menu_suffix));
 
     pofo_menu_getsize(INTERFACE_MENU_TOP_LEFT, interface_menu_text, 0,
                        &bottom_right);
@@ -455,8 +450,7 @@ static void build_detail_text()
     char *p;
 
     p = detail_menu_text;
-    strcpy(p, "Interface Detail");
-    p += strlen(p) + 1;
+    p += sprintf(p, "Interface Detail") + 1;
 
     if (netif_type == PFTC_WIFI_CLIENT) {
         if (netif_ssid_length == 0xFF)
@@ -471,21 +465,16 @@ static void build_detail_text()
 
     if (netif_type == PFTC_WIFI_CLIENT &&
         netif_ssid_length != 0xFF && netif_ssid_length != 0xFE) {
-        sprintf(p, "RSSI: %d dBm", netif_rssi);
-        p += strlen(p) + 1;
-        sprintf(p, "Channel: %u", netif_channel);
-        p += strlen(p) + 1;
+        p += sprintf(p, "RSSI: %d dBm", netif_rssi) + 1;
+        p += sprintf(p, "Channel: %u", netif_channel) + 1;
     }
 
-    sprintf(p, "IP: %u.%u.%u.%u/%u", netif_ipv4[0], netif_ipv4[1],
-            netif_ipv4[2], netif_ipv4[3], netif_netmask_prefix);
-    p += strlen(p) + 1;
-    sprintf(p, "GW: %u.%u.%u.%u", netif_gateway[0], netif_gateway[1],
-            netif_gateway[2], netif_gateway[3]);
-    p += strlen(p) + 1;
-    sprintf(p, "DNS: %u.%u.%u.%u", netif_dns[0], netif_dns[1],
-            netif_dns[2], netif_dns[3]);
-    p += strlen(p) + 1;
+    p += sprintf(p, "IP: %u.%u.%u.%u/%u", netif_ipv4[0], netif_ipv4[1],
+            netif_ipv4[2], netif_ipv4[3], netif_netmask_prefix) + 1;
+    p += sprintf(p, "GW: %u.%u.%u.%u", netif_gateway[0], netif_gateway[1],
+            netif_gateway[2], netif_gateway[3]) + 1;
+    p += sprintf(p, "DNS: %u.%u.%u.%u", netif_dns[0], netif_dns[1],
+            netif_dns[2], netif_dns[3]) + 1;
 
     *p = 0; /* double zero terminator */
 }
@@ -600,26 +589,16 @@ char *text;
 static void build_network_settings_text()
 {
     char *p;
-    char line[SETTINGS_FIELD_MAX];
 
     p = network_settings_menu_text;
-    strcpy(p, "Network settings");
-    p += strlen(p) + 1;
-    sprintf(line, "Enabled: %s", yesno(network_settings_enabled));
-    strcpy(p, line);
-    p += strlen(p) + 1;
+    p += sprintf(p, "Network settings") + 1;
+    p += sprintf(p, "Enabled: %s", yesno(network_settings_enabled)) + 1;
     if (network_settings_enabled) {
-        strcpy(p, "Scan");
-        p += strlen(p) + 1;
-        sprintf(line, "SSID: %s", network_settings_ssid);
-        strcpy(p, line);
-        p += strlen(p) + 1;
-        sprintf(line, "PSK: %s", network_settings_psk);
-        strcpy(p, line);
-        p += strlen(p) + 1;
+        p += sprintf(p, "Scan") + 1;
+        p += sprintf(p, "SSID: %s", network_settings_ssid) + 1;
+        p += sprintf(p, "PSK: %s", network_settings_psk) + 1;
     }
-    strcpy(p, "Apply");
-    p += strlen(p) + 1;
+    p += sprintf(p, "Apply") + 1;
     *p = 0;
 }
 
@@ -675,8 +654,7 @@ unsigned char *security_out;
         count = WIFISCAN_MENU_MAX_ITEMS;
 
     out = wifiscan_menu_text;
-    strcpy(out, "Scan results");
-    out += strlen(out) + 1;
+    out += sprintf(out, "Scan results") + 1;
 
     p = wifiscan_response + 3;
     for (i = 0; i < count; i++) {
@@ -689,11 +667,10 @@ unsigned char *security_out;
         security = p[1 + ssid_len + 1];
         wifiscan_menu_security[i] = security;
 
-        sprintf(out, "%s (%s, %d)", label,
+        out += sprintf(out, "%s (%s, %d)", label,
                 security == PFTC_SECURITY_OPEN ? "open" :
                 security == PFTC_SECURITY_WPA3_PSK ? "WPA3" : "WPA2",
-                rssi);
-        out += strlen(out) + 1;
+                rssi) + 1;
 
         p += 1 + ssid_len + 2;
     }
@@ -842,34 +819,30 @@ static unsigned char ip_settings_ipv6;
 static char invalid_ipv4_dialog_text[] = "Invalid IPv4 address.";
 static char invalid_prefix_dialog_text[] = "Prefix must be 0-32.";
 
-/* "" doesn't parse as a valid address either - Apply is the only way
-   forward from an all-blank field, same as any other invalid value. */
+/* Loose check: 4 dot-separated 1-3 digit groups, no numeric range check
+   per octet (so "999.999.999.999" slips through) - Apply is "Not
+   supported yet" regardless, so a stricter parse buys nothing here.
+   "" doesn't parse as valid either, same as any other bad value. */
 static int is_valid_ipv4(text)
 char *text;
 {
-    unsigned char octet_count;
-    unsigned int value;
-    unsigned char digit_count;
+    unsigned char dots, digits;
 
-    octet_count = 0;
-    for (;;) {
-        value = 0;
-        digit_count = 0;
-        while (*text >= '0' && *text <= '9') {
-            value = value * 10 + (*text - '0');
-            digit_count++;
-            text++;
-        }
-        if (digit_count == 0 || digit_count > 3 || value > 255)
-            return 0;
-        octet_count++;
-        if (*text == 0)
+    dots = 0;
+    digits = 0;
+    for (;; text++) {
+        if (*text >= '0' && *text <= '9') {
+            digits++;
+            if (digits > 3)
+                return 0;
+        } else if (*text == '.') {
+            if (digits == 0 || ++dots > 3)
+                return 0;
+            digits = 0;
+        } else
             break;
-        if (*text != '.' || octet_count == 4)
-            return 0;
-        text++;
     }
-    return octet_count == 4;
+    return *text == 0 && digits > 0 && dots == 3;
 }
 
 static int is_valid_prefix(text)
@@ -893,30 +866,17 @@ char *text;
 static void build_ip_settings_text()
 {
     char *p;
-    char line[SETTINGS_FIELD_MAX];
 
     p = ip_settings_menu_text;
-    strcpy(p, "IP settings");
-    p += strlen(p) + 1;
-    sprintf(line, "Mode: %s", ip_settings_mode_static ? "Static" : "DHCP");
-    strcpy(p, line);
-    p += strlen(p) + 1;
+    p += sprintf(p, "IP settings") + 1;
+    p += sprintf(p, "Mode: %s", ip_settings_mode_static ? "Static" : "DHCP") + 1;
     if (ip_settings_mode_static) {
-        sprintf(line, "IP: %s", ip_settings_ip);
-        strcpy(p, line);
-        p += strlen(p) + 1;
-        sprintf(line, "Prefix: %s", ip_settings_prefix);
-        strcpy(p, line);
-        p += strlen(p) + 1;
-        sprintf(line, "Gateway: %s", ip_settings_gateway);
-        strcpy(p, line);
-        p += strlen(p) + 1;
+        p += sprintf(p, "IP: %s", ip_settings_ip) + 1;
+        p += sprintf(p, "Prefix: %s", ip_settings_prefix) + 1;
+        p += sprintf(p, "Gateway: %s", ip_settings_gateway) + 1;
     }
-    sprintf(line, "IPv6: %s", yesno(ip_settings_ipv6));
-    strcpy(p, line);
-    p += strlen(p) + 1;
-    strcpy(p, "Apply");
-    p += strlen(p) + 1;
+    p += sprintf(p, "IPv6: %s", yesno(ip_settings_ipv6)) + 1;
+    p += sprintf(p, "Apply") + 1;
     *p = 0;
 }
 

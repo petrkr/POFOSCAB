@@ -41,7 +41,7 @@ $(PFTD_BIN): $(PFTD_SRC) $(PFTD_INC) | $(BUILD_DIR)
 	$(NASM) -f bin -i src/pftd/ -o $@ $<
 
 $(PFTC_BIN): $(PFTC_SRC) $(PFTC_SUPPORT_SRC) $(PFTC_HEADERS) | $(BUILD_DIR)
-	$(BCC) -Md $(BCC_INCLUDES) -o $@ $(PFTC_SRC) $(PFTC_SUPPORT_SRC)
+	$(BCC) -Md -O $(BCC_INCLUDES) -o $@ $(PFTC_SRC) $(PFTC_SUPPORT_SRC)
 
 # Assumes the bridge (or ESP smart-cable client) is already running at
 # HOST:PORT and the Portfolio is sitting in File Transfer Server mode.
