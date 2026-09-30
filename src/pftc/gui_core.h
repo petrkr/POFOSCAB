@@ -1,5 +1,5 @@
-#ifndef PFTC_GUI_H
-#define PFTC_GUI_H
+#ifndef PFTC_GUI_CORE_H
+#define PFTC_GUI_CORE_H
 
 #define STATUS_TOP_LEFT     POFO_COORD(7, 0)
 #define STATUS_BOTTOM_RIGHT POFO_COORD(7, 39)

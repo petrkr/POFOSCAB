@@ -1,4 +1,4 @@
-#include "pftc_valid.h"
+#include "valid.h"
 
 /* Hand-written in asm - the equivalent C loop (digit accumulation,
    octet/digit counters, three exit conditions) costs noticeably more

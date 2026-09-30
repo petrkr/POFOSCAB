@@ -1,8 +1,8 @@
-#ifndef PFTC_NAV_SHARED_H
-#define PFTC_NAV_SHARED_H
+#ifndef PFTC_GUI_SHARED_H
+#define PFTC_GUI_SHARED_H
 
-/* Internal cross-module state and helpers shared between pftc_nav.c,
-   pftc_iface.c and pftc_ip.c. Not part of the public pftc_nav.h API. */
+/* Internal cross-module state and helpers shared between gui.c,
+   gui_iface.c and gui_ip.c. Not part of the public gui.h API. */
 
 /* Network/IP settings screens share the same menu geometry and field
    size limit. */
@@ -14,7 +14,7 @@
 #define SETTINGS_FIELD_MAX 64
 
 /* Last successful GET_NETIFS/GET_NETIF fetch; valid only when netif_ok.
-   Populated by do_fetch_netif()/fetch_netif() in pftc_nav.c. */
+   Populated by do_fetch_netif()/fetch_netif() in gui.c. */
 extern unsigned char netif_ok;
 extern unsigned char netif_interface;
 extern unsigned char netif_type;
@@ -37,8 +37,8 @@ int fetch_netif();
 
 char *netif_type_label();
 
-/* "Yes"/"No" for a boolean flag - shared between pftc_iface.c's
-   Network settings and pftc_ip.c's IP settings IPv6 toggle. */
+/* "Yes"/"No" for a boolean flag - shared between gui_iface.c's
+   Network settings and gui_ip.c's IP settings IPv6 toggle. */
 char *yesno();
 
 /* Shared body for every "edit a field, validate, retry on bad input,

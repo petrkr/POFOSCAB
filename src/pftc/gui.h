@@ -1,5 +1,5 @@
-#ifndef PFTC_NAV_H
-#define PFTC_NAV_H
+#ifndef PFTC_GUI_NAV_H
+#define PFTC_GUI_NAV_H
 
 enum nav_state {
     NAV_DASHBOARD, NAV_ROOT_MENU, NAV_INTERFACES, NAV_INTERFACE_MENU,

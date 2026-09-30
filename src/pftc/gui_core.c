@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <conio.h>
 #include "pofo.h"
-#include "pftc_gui.h"
+#include "gui_core.h"
 
 static unsigned char status_screen_buffer[POFO_SCREEN_SIZE(STATUS_TOP_LEFT, STATUS_BOTTOM_RIGHT)];
 /* Sized for the widest progress_dialog_open() text ("Getting interfaces");

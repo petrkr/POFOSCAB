@@ -4,10 +4,10 @@
 #include "pofo.h"
 #include "smartcable.h"
 #include "pftc_proto.h"
-#include "pftc_gui.h"
-#include "pftc_nav.h"
-#include "pftc_valid.h"
-#include "pftc_nav_shared.h"
+#include "gui_core.h"
+#include "gui.h"
+#include "valid.h"
+#include "gui_shared.h"
 
 #define INTERFACE_MENU_TOP_LEFT POFO_COORD(1, 2)
 #define INTERFACE_MENU_HEIGHT_LIMIT 7
