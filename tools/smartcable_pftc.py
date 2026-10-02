@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Mock server for the Portfolio File Transfer Configuration client.
 
-Implements HELLO (0x01), GET_NETIFS (0x02), GET_NETIF (0x03), and
-GET_WIFISCAN (0x07) per PFTC_PROTOCOL.md. SET_NETIF/GET_IPCFG/
-SET_IPCFG are not implemented yet. GET_STATUS (0x08) is an ESP-wide
-device status opcode with no designed response shape yet - not
-implemented.
+Implements HELLO (0x01), GET_NETIFS (0x02), GET_NETIF (0x03),
+SET_NETIF (0x04), and GET_WIFISCAN (0x07) per PFTC_PROTOCOL.md.
+0x05/0x06 (formerly GET_IPCFG/SET_IPCFG) were folded into
+GET_NETIF/SET_NETIF's common header and no longer exist. GET_STATUS
+(0x08) is an ESP-wide device status opcode with no designed response
+shape yet - not implemented.
 
 NetifSlot/WifiScanResult are written MicroPython-portable (no
 dataclasses, no typing imports used at runtime, only stdlib
@@ -21,13 +22,18 @@ from smartcable_server import SmartCable, receive_atari_block
 PFTC_HELLO = 0x01
 PFTC_GET_NETIFS = 0x02
 PFTC_GET_NETIF = 0x03
+PFTC_SET_NETIF = 0x04
 PFTC_GET_WIFISCAN = 0x07
 
 PFTC_OK = 0x20
 PFTC_ERR = 0x10
 PFTC_ERR_UNKNOWN_COMMAND = 0x01
 PFTC_ERR_MALFORMED = 0x02
+PFTC_ERR_NOT_CONNECTED = 0x03
 PFTC_ERR_NOT_SUPPORTED = 0x04
+
+IP_MODE_DHCP = 0x00
+IP_MODE_STATIC = 0x01
 
 SECURITY_OPEN = 0x00
 SECURITY_WPA2_PSK = 0x01
@@ -54,11 +60,19 @@ class NetifSlot:
     (interface/type/enabled, 3 bytes). to_bytes(full=True) returns the
     complete GET_NETIF response body (status+error code are NOT
     included - the caller prepends those): common header (interface/
-    type/enabled/connection state/IPv4/netmask prefix/gateway/DNS)
-    followed by the type-specific section (channel/RSSI/SSID for
-    type=0x01 - the fixed-size fields come first so the client can read
-    them at a constant offset without first parsing the variable-length
-    SSID; a future type would need its own to_bytes branch here).
+    type/enabled/connection state/IPv4/netmask prefix/gateway/DNS/
+    IP mode/IPv6) followed by the type-specific section (channel/RSSI/
+    SSID for type=0x01 - the fixed-size fields come first so the client
+    can read them at a constant offset without first parsing the
+    variable-length SSID; a future type would need its own to_bytes
+    branch here).
+
+    `ip_mode`/`ipv6_enabled` are addressing-mode config, not tied to
+    any one type - formerly their own GET_IPCFG/SET_IPCFG opcodes
+    (0x05/0x06), folded into this common header since addressing mode
+    never needed its own round trip. When `ip_mode` is static, `ipv4`/
+    `netmask_prefix`/`gateway` above already hold the active static
+    values - there is no separate static-address echo.
     """
 
     def __init__(
@@ -71,6 +85,8 @@ class NetifSlot:
         netmask_prefix=0,
         gateway=(0, 0, 0, 0),
         dns=(0, 0, 0, 0),
+        ip_mode=IP_MODE_DHCP,
+        ipv6_enabled=0x00,
         ssid="",
         channel=0,
         rssi=-128,
@@ -83,6 +99,8 @@ class NetifSlot:
         self.netmask_prefix = netmask_prefix
         self.gateway = gateway
         self.dns = dns
+        self.ip_mode = ip_mode
+        self.ipv6_enabled = ipv6_enabled
         self.ssid = ssid
         self.channel = channel
         self.rssi = rssi
@@ -98,6 +116,7 @@ class NetifSlot:
         common_header += bytes((self.netmask_prefix,))
         common_header += bytes(self.gateway)
         common_header += bytes(self.dns)
+        common_header += bytes((self.ip_mode, self.ipv6_enabled))
 
         if self.type == TYPE_WIFI_CLIENT:
             ssid_bytes = self.ssid.encode("ascii")
@@ -184,6 +203,65 @@ def build_netif_response(interface: int) -> bytes:
     return bytes((PFTC_OK, 0x00)) + mock_netif.to_bytes(full=True)
 
 
+def build_status_response(status: int, error_code: int) -> bytes:
+    return bytes((status, error_code))
+
+
+def parse_set_netif(payload: bytes):
+    """Parse a SET_NETIF request body (after the opcode byte), per
+    PFTC_PROTOCOL.md's SET_NETIF layout for type=0x01 WiFi client.
+    Returns (interface, type_, enabled, ip_mode, ip, netmask_prefix,
+    gateway, ipv6_enabled, ssid, psk) or None if malformed (too short /
+    length-prefixed fields run past the end). netmask_prefix is a CIDR
+    length (0-32), not a dotted mask - expanding it to a literal mask
+    is the ESP's job, not the client's.
+    """
+    if len(payload) < 14:
+        return None
+    interface, type_, enabled, ip_mode = payload[0], payload[1], payload[2], payload[3]
+    ip = tuple(payload[4:8])
+    netmask_prefix = payload[8]
+    gateway = tuple(payload[9:13])
+    ipv6_enabled = payload[13]
+    offset = 14
+    if offset >= len(payload):
+        return None
+    ssid_len = payload[offset]
+    offset += 1
+    if offset + ssid_len > len(payload):
+        return None
+    ssid = payload[offset:offset + ssid_len].decode("ascii", errors="replace")
+    offset += ssid_len
+    if offset >= len(payload):
+        return None
+    psk_len = payload[offset]
+    offset += 1
+    if offset + psk_len > len(payload):
+        return None
+    psk = payload[offset:offset + psk_len].decode("ascii", errors="replace")
+    offset += psk_len
+    if offset != len(payload):
+        return None
+    return interface, type_, enabled, ip_mode, ip, netmask_prefix, gateway, ipv6_enabled, ssid, psk
+
+
+def handle_set_netif(payload: bytes) -> bytes:
+    """Log-only mock: prints what SET_NETIF received and always
+    acknowledges success. Does NOT mutate mock_netif - this mock is
+    for exercising the client's request-building/wire format, not for
+    simulating a stateful ESP that remembers what was applied.
+    """
+    parsed = parse_set_netif(payload)
+    if parsed is None:
+        print(f"PFTC SET_NETIF malformed payload: {payload!r}", flush=True)
+        return build_status_response(PFTC_ERR, PFTC_ERR_MALFORMED)
+    interface, type_, enabled, ip_mode, ip, netmask_prefix, gateway, ipv6_enabled, ssid, psk = parsed
+    print(f"PFTC SET_NETIF interface={interface} type={type_} enabled={enabled} "
+          f"ip_mode={ip_mode} ip={ip} netmask_prefix={netmask_prefix} gateway={gateway} "
+          f"ipv6={ipv6_enabled} ssid={ssid!r} psk={'*' * len(psk)}", flush=True)
+    return build_status_response(PFTC_OK, 0x00)
+
+
 def build_wifiscan_response(interface: int) -> bytes:
     if interface != mock_netif.interface:
         return bytes((PFTC_ERR, PFTC_ERR_MALFORMED))
@@ -231,6 +309,9 @@ def handle_packet(payload: bytes) -> bytes:
         interface = payload[1]
         print(f"PFTC GET_NETIF interface={interface}", flush=True)
         return build_netif_response(interface)
+
+    if len(payload) >= 1 and payload[0] == PFTC_SET_NETIF:
+        return handle_set_netif(payload[1:])
 
     if len(payload) == 2 and payload[0] == PFTC_GET_WIFISCAN:
         interface = payload[1]
