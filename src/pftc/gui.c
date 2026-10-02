@@ -40,9 +40,16 @@ unsigned char dashboard_netif_ok;
 struct netif_wificli dashboard_netif;
 
 /* Interface menu's own fetch; scoped to the menu's lifetime. */
-struct netif_wificli menu_netif;
+struct netif_state menu_netif;
 
 unsigned char selected_interface;
+
+/* Pending Network/IP settings edits, shared across both screens and
+   applied together by do_interface_menu()'s Apply - see struct
+   pending_netif_settings in gui_shared.h. */
+struct pending_netif_settings pending_settings;
+
+static char applied_dialog_text[] = "Applied.";
 
 static char root_menu_text[] = "PFTC\0Interfaces\0Reconnect\0Info\0Exit\0\0";
 static char interfaces_menu_text[INTERFACES_MENU_MAX_ITEMS * 16 + 16];
@@ -61,9 +68,10 @@ struct netif_wificli *out;
 {
     unsigned int received;
     unsigned int wifi_size;
-    unsigned char *wifi;
+    unsigned char *ssid_bytes;
     int status;
     struct netif_info *netif;
+    struct netif_wificli_ext *ext;
 
     netif_request[1] = interface;
     progress_dialog_open("Getting interface");
@@ -90,21 +98,84 @@ struct netif_wificli *out;
     out->rssi = -128;
     out->ssid_length = 0;
     if (netif->type == PFTC_WIFI_CLIENT) {
-        wifi = response + sizeof(struct netif_info);
         wifi_size = received - sizeof(struct netif_info);
-        if (wifi_size >= 3) {
-            out->channel = wifi[0];
-            out->rssi = (signed char)wifi[1];
-            out->ssid_length = wifi[2];
+        if (wifi_size >= sizeof(struct netif_wificli_ext)) {
+            ext = (struct netif_wificli_ext *)(response + sizeof(struct netif_info));
+            out->channel = ext->channel;
+            out->rssi = ext->rssi;
+            out->ssid_length = ext->ssid_length;
             if (out->ssid_length > sizeof(out->ssid) - 1)
                 out->ssid_length = sizeof(out->ssid) - 1;
-            if (wifi_size >= (unsigned int)wifi[2] + 3) {
-                memcpy(out->ssid, wifi + 3, out->ssid_length);
+            if (wifi_size >= sizeof(struct netif_wificli_ext) + ext->ssid_length) {
+                ssid_bytes = response + sizeof(struct netif_info) +
+                             sizeof(struct netif_wificli_ext);
+                memcpy(out->ssid, ssid_bytes, out->ssid_length);
                 out->ssid[out->ssid_length] = 0;
             } else
                 out->ssid_length = 0xFF; /* sentinel: "invalid" */
         } else
             out->ssid_length = 0xFE; /* sentinel: "unavailable" */
+    }
+
+    return 0;
+}
+
+/* Fetches GET_NETIF for `interface` into `*out`, generic across
+   interface types - see struct netif_state in gui_shared.h. Returns 0
+   on success, non-zero on error (already reported); *out is untouched
+   on failure so a failed refresh keeps old data. */
+int fetch_netif_state(interface, out)
+unsigned char interface;
+struct netif_state *out;
+{
+    unsigned int received;
+    unsigned int wifi_size;
+    unsigned char *ssid_bytes;
+    int status;
+    struct netif_info *netif;
+    struct netif_wificli_ext *ext;
+
+    netif_request[1] = interface;
+    progress_dialog_open("Getting interface");
+    status = smartcable_exchange(netif_request, sizeof(netif_request),
+                           response, sizeof(response), &received);
+    progress_dialog_close();
+    if (status != 0) {
+        show_transport_error();
+        return 1;
+    }
+    if (received < sizeof(struct netif_info)) {
+        show_protocol_error();
+        return 1;
+    }
+    netif = (struct netif_info *)response;
+    if (netif->error != 0) {
+        show_protocol_error();
+        return 1;
+    }
+
+    out->info = *netif;
+
+    if (netif->type == PFTC_WIFI_CLIENT) {
+        out->ext.wificli.fields.channel = 0;
+        out->ext.wificli.fields.rssi = -128;
+        out->ext.wificli.fields.ssid_length = 0;
+        wifi_size = received - sizeof(struct netif_info);
+        if (wifi_size >= sizeof(struct netif_wificli_ext)) {
+            ext = (struct netif_wificli_ext *)(response + sizeof(struct netif_info));
+            out->ext.wificli.fields = *ext;
+            if (out->ext.wificli.fields.ssid_length > sizeof(out->ext.wificli.ssid) - 1)
+                out->ext.wificli.fields.ssid_length = sizeof(out->ext.wificli.ssid) - 1;
+            if (wifi_size >= sizeof(struct netif_wificli_ext) + ext->ssid_length) {
+                ssid_bytes = response + sizeof(struct netif_info) +
+                             sizeof(struct netif_wificli_ext);
+                memcpy(out->ext.wificli.ssid, ssid_bytes,
+                       out->ext.wificli.fields.ssid_length);
+                out->ext.wificli.ssid[out->ext.wificli.fields.ssid_length] = 0;
+            } else
+                out->ext.wificli.fields.ssid_length = 0xFF; /* sentinel: "invalid" */
+        } else
+            out->ext.wificli.fields.ssid_length = 0xFE; /* sentinel: "unavailable" */
     }
 
     return 0;
@@ -369,6 +440,95 @@ enum nav_state do_interfaces_list()
 
     selected_interface = interfaces_menu_interface[POFO_LOW_BYTE(result)];
     return NAV_INTERFACE_MENU;
+}
+
+/* Fills pending_settings from menu_netif - called once at
+   do_interface_menu() entry, before Network/IP settings can be
+   opened. DHCP/static mode and IPv6 default to off since GET_NETIF's
+   ip_mode/ipv6_enabled fields didn't exist until this wire-format
+   change; once the ESP side reports them for real, read them here
+   instead. */
+void init_pending_settings()
+{
+    pending_settings.enabled = menu_netif.info.enabled;
+    strcpy(pending_settings.ssid,
+           (menu_netif.info.type == PFTC_WIFI_CLIENT &&
+            menu_netif.ext.wificli.fields.ssid_length != 0xFF &&
+            menu_netif.ext.wificli.fields.ssid_length != 0xFE) ?
+           menu_netif.ext.wificli.ssid : "");
+    pending_settings.psk[0] = 0;
+
+    pending_settings.ip_mode = PFTC_IP_MODE_DHCP;
+    sprintf(pending_settings.ip, "%u.%u.%u.%u", menu_netif.info.ipv4[0],
+            menu_netif.info.ipv4[1], menu_netif.info.ipv4[2],
+            menu_netif.info.ipv4[3]);
+    sprintf(pending_settings.prefix, "%u", menu_netif.info.netmask_prefix);
+    sprintf(pending_settings.gateway, "%u.%u.%u.%u", menu_netif.info.gateway[0],
+            menu_netif.info.gateway[1], menu_netif.info.gateway[2],
+            menu_netif.info.gateway[3]);
+    pending_settings.ipv6_enabled = 0;
+}
+
+/* Builds and sends SET_NETIF from pending_settings for
+   selected_interface, per PFTC_PROTOCOL.md's merged SET_NETIF layout:
+   interface/type/enabled/ip_mode/ip/netmask/gateway/ipv6/ssid/psk.
+   Returns 0 on success, non-zero on error (already reported). */
+int apply_netif_settings()
+{
+    unsigned char *p;
+    unsigned char ssid_len, psk_len;
+    unsigned int received;
+    int status;
+
+    p = set_netif_request;
+    *p++ = PFTC_SET_NETIF;
+    *p++ = selected_interface;
+    *p++ = menu_netif.info.type;
+    *p++ = pending_settings.enabled;
+    *p++ = pending_settings.ip_mode;
+
+    if (pending_settings.ip_mode == PFTC_IP_MODE_STATIC) {
+        parse_ipv4(pending_settings.ip, p);
+        p += 4;
+        *p++ = (unsigned char)parse_prefix(pending_settings.prefix);
+        parse_ipv4(pending_settings.gateway, p);
+        p += 4;
+    } else {
+        memset(p, 0, 9);
+        p += 9;
+    }
+    *p++ = pending_settings.ipv6_enabled;
+
+    ssid_len = strlen(pending_settings.ssid);
+    *p++ = ssid_len;
+    memcpy(p, pending_settings.ssid, ssid_len);
+    p += ssid_len;
+
+    psk_len = strlen(pending_settings.psk);
+    *p++ = psk_len;
+    memcpy(p, pending_settings.psk, psk_len);
+    p += psk_len;
+
+    progress_dialog_open("Applying");
+    status = smartcable_exchange(set_netif_request,
+                           (unsigned int)(p - set_netif_request),
+                           response, sizeof(response), &received);
+    progress_dialog_close();
+    if (status != 0) {
+        show_transport_error();
+        return 1;
+    }
+    if (received < 2) {
+        show_protocol_error();
+        return 1;
+    }
+    if (response[0] != 0x20) {
+        show_protocol_error();
+        return 1;
+    }
+
+    pofo_error_dialog(DIALOG_TOP_LEFT, applied_dialog_text);
+    return 0;
 }
 
 /* Shared body for every "edit a field, validate, retry on bad input,

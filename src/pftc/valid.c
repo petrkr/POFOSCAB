@@ -109,3 +109,88 @@ char *text;
     pop si
 #endasm
 }
+
+/* Hand-written in asm, same rationale as is_valid_ipv4() above - only
+   takes two pointer params (char* in, unsigned char* out), no calls
+   to other C functions from inside. Runs only after is_valid_ipv4()
+   already validated the string, so no range/format checking here:
+   just the same digit-accumulation loop, writing each octet to out[]
+   and skipping the '.' instead of checking it. */
+void parse_ipv4(text, out)
+char *text;
+unsigned char *out;
+{
+#asm
+    push si
+    push di
+    push bp
+    mov bx,sp
+    mov si,8[bx]
+    mov di,10[bx]
+    mov bx,#4
+.pip4_octet:
+    xor bp,bp
+.pip4_digit:
+    mov al,[si]
+    cmp al,#$30
+    jb .pip4_digit_done
+    cmp al,#$39
+    ja .pip4_digit_done
+    sub al,#$30
+    xor ah,ah
+    xchg ax,bp
+    mov cx,#10
+    mul cx
+    add ax,bp
+    mov bp,ax
+    inc si
+    jmp .pip4_digit
+.pip4_digit_done:
+    mov ax,bp
+    mov [di],al
+    inc di
+    inc si
+    dec bx
+    jnz .pip4_octet
+    pop bp
+    pop di
+    pop si
+#endasm
+}
+
+/* Hand-written in asm, same rationale as is_valid_ipv4() above - only
+   takes one char* param, no calls to other C functions from inside.
+   Runs only after is_valid_prefix() already validated the string:
+   parses the 0-32 decimal prefix length into a byte. Expanding this
+   to a literal dotted netmask is the ESP's job, not the client's -
+   SET_NETIF carries the prefix length as-is (see PFTC_PROTOCOL.md). */
+int parse_prefix(text)
+char *text;
+{
+#asm
+    push si
+    push bp
+    mov bx,sp
+    mov si,6[bx]
+    xor bp,bp
+.pprefix_digit:
+    mov al,[si]
+    cmp al,#$30
+    jb .pprefix_done
+    cmp al,#$39
+    ja .pprefix_done
+    sub al,#$30
+    xor ah,ah
+    xchg ax,bp
+    mov cx,#10
+    mul cx
+    add ax,bp
+    mov bp,ax
+    inc si
+    jmp .pprefix_digit
+.pprefix_done:
+    mov ax,bp
+    pop bp
+    pop si
+#endasm
+}
