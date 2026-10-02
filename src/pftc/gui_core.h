@@ -6,13 +6,8 @@
 
 #define DIALOG_TOP_LEFT POFO_COORD(2, 2)
 
-/* Width in characters of the bar print_signal_bar() draws. */
-#define SIGNAL_BAR_LEVELS 10
-
 void status_init();
 void status_set();
-void print_ipv4();
-void print_signal_bar();
 void show_transport_error();
 void show_protocol_error();
 void show_out_of_memory_error();
