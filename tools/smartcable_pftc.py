@@ -2,11 +2,11 @@
 """Mock server for the Portfolio File Transfer Configuration client.
 
 Implements HELLO (0x01), GET_NETIFS (0x02), GET_NETIF (0x03),
-SET_NETIF (0x04), and GET_WIFISCAN (0x07) per PFTC_PROTOCOL.md.
-0x05/0x06 (formerly GET_IPCFG/SET_IPCFG) were folded into
-GET_NETIF/SET_NETIF's common header and no longer exist. GET_STATUS
-(0x08) is an ESP-wide device status opcode with no designed response
-shape yet - not implemented.
+SET_NETIF (0x04), GET_WIFISCAN (0x07), and GET_DASHBOARD (0x08, mode
+FULL only) per PFTC_PROTOCOL.md. 0x05/0x06 (formerly GET_IPCFG/
+SET_IPCFG) were folded into GET_NETIF/SET_NETIF's common header and no
+longer exist. GET_DASHBOARD's mode=PARTIAL is a protocol draft only,
+not implemented here.
 
 NetifSlot/WifiScanResult are written MicroPython-portable (no
 dataclasses, no typing imports used at runtime, only stdlib
@@ -24,6 +24,10 @@ PFTC_GET_NETIFS = 0x02
 PFTC_GET_NETIF = 0x03
 PFTC_SET_NETIF = 0x04
 PFTC_GET_WIFISCAN = 0x07
+PFTC_GET_DASHBOARD = 0x08
+
+DASHBOARD_MODE_FULL = 0x00
+DASHBOARD_MODE_PARTIAL = 0x01
 
 PFTC_OK = 0x20
 PFTC_ERR = 0x10
@@ -178,6 +182,67 @@ mock_wifiscan_results = [
 ]
 
 
+class DashboardEntry:
+    """One GET_DASHBOARD FULL entry (see PFTC_PROTOCOL.md's
+    GET_DASHBOARD section). `row`/`col` are packed on the wire as
+    POFO_COORD(row, col) - high byte row, low byte col - screen-
+    absolute, matching pofo.h's INT 60h coordinate packing so the
+    client can gotoxy() straight off these bytes. `payload` is raw
+    bytes (not ASCII-only) - CP437 glyphs like the 0xB3 separator and
+    0xDB/0xB0 signal-bar blocks are >0x7F, same as WifiScanResult's
+    SSID handling above.
+    """
+
+    def __init__(self, id_: int, row: int, col: int, payload: bytes):
+        self.id = id_
+        self.row = row
+        self.col = col
+        self.payload = payload
+
+    def to_bytes(self) -> bytes:
+        return (
+            bytes((self.id, self.row, self.col, len(self.payload)))
+            + self.payload
+        )
+
+
+def _signal_bar_bytes(rssi: int) -> bytes:
+    """Mirrors gui_core.c's print_signal_bar() exactly (same
+    SIGNAL_BAR_FULL/EMPTY glyphs, same MIN/MAX/LEVELS thresholds) -
+    the mock sends the finished bar bytes so the client stays a dumb
+    writer, never recomputing bar fill from RSSI itself.
+    """
+    SIGNAL_BAR_FULL = 0xDB
+    SIGNAL_BAR_EMPTY = 0xB0
+    SIGNAL_BAR_MIN = -90
+    SIGNAL_BAR_MAX = -40
+    LEVELS = 10
+
+    if rssi <= SIGNAL_BAR_MIN:
+        filled = 0
+    elif rssi >= SIGNAL_BAR_MAX:
+        filled = LEVELS
+    else:
+        filled = (rssi - SIGNAL_BAR_MIN) * LEVELS // (SIGNAL_BAR_MAX - SIGNAL_BAR_MIN)
+    return bytes(SIGNAL_BAR_FULL if i < filled else SIGNAL_BAR_EMPTY for i in range(LEVELS))
+
+
+# Fixed/fake dashboard layout for timing/render measurement only - ids
+# and text are placeholders, not a finalized field-id scheme (that's
+# still open per PFTC_PROTOCOL.md). Mirrors draw_dashboard()'s rows 1-5
+# in gui.c, including the 0xB3 CP437 separator and the signal-bar
+# glyphs print_signal_bar() draws - not a plain ASCII pipe/number.
+_mock_rssi = -45
+mock_dashboard_entries = [
+    DashboardEntry(1, 1, 2, b"SSID: MockSSID"),
+    DashboardEntry(2, 1, 38 - 10 - 3, b" " + bytes((0xB3,)) + b" " + _signal_bar_bytes(_mock_rssi)),
+    DashboardEntry(3, 2, 2, b"IP: 192.168.1.42/24"),
+    DashboardEntry(4, 3, 2, b"GW: 192.168.1.1"),
+    DashboardEntry(5, 4, 2, b"DNS: 192.168.1.1"),
+    DashboardEntry(6, 5, 2, b"CH6"),
+]
+
+
 def build_hello_response() -> bytes:
     major, minor, patch = MOCK_VERSION
     return struct.pack(
@@ -275,6 +340,19 @@ def build_wifiscan_response(interface: int) -> bytes:
     return body
 
 
+def build_dashboard_response(mode: int) -> bytes:
+    if mode == DASHBOARD_MODE_PARTIAL:
+        # Draft only per PFTC_PROTOCOL.md - no shape decided yet.
+        return bytes((PFTC_ERR, PFTC_ERR_NOT_SUPPORTED))
+    if mode != DASHBOARD_MODE_FULL:
+        return bytes((PFTC_ERR, PFTC_ERR_MALFORMED))
+
+    body = bytes((PFTC_OK, 0x00))
+    for entry in mock_dashboard_entries:
+        body += entry.to_bytes()
+    return body
+
+
 def send_block_after_sync(link: SmartCable, payload: bytes) -> bool:
     """Send a block after the Atari's Z sync was already received.
 
@@ -317,6 +395,11 @@ def handle_packet(payload: bytes) -> bytes:
         interface = payload[1]
         print(f"PFTC GET_WIFISCAN interface={interface}", flush=True)
         return build_wifiscan_response(interface)
+
+    if len(payload) == 2 and payload[0] == PFTC_GET_DASHBOARD:
+        mode = payload[1]
+        print(f"PFTC GET_DASHBOARD mode={mode}", flush=True)
+        return build_dashboard_response(mode)
 
     print(f"PFTC unknown opcode: {payload!r}", flush=True)
     return bytes((PFTC_ERR, PFTC_ERR_UNKNOWN_COMMAND))
