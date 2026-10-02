@@ -16,6 +16,7 @@ void print_signal_bar();
 void show_transport_error();
 void show_protocol_error();
 void show_out_of_memory_error();
+void show_applied_message();
 
 /* Titleless progress dialog around a blocking smartcable_exchange()
    call - open with the action's text, close right after. */

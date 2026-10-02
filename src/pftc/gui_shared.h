@@ -55,15 +55,17 @@ extern struct netif_state menu_netif;
 
 extern unsigned char selected_interface;
 
-/* Pending edits from Network settings (enabled/ssid/psk) and IP
-   settings (ip_mode/ip/prefix/gateway/ipv6), shared across both
-   screens and read by Interface menu's Apply - all editing a single
-   SET_NETIF, so there is one copy, not two. Initialized from
-   menu_netif at do_interface_menu() entry, same lifetime as
-   menu_netif itself. ip/prefix/gateway are kept as the edited text
-   (not yet parsed to bytes) since they're edited as text fields;
-   Apply parses them via parse_ipv4()/prefix_to_netmask(). */
-struct pending_netif_settings {
+/* Interface menu's editable settings (enabled/ssid/psk from Network
+   settings, ip_mode/ip/prefix/gateway/ipv6 from IP settings) - read by
+   Interface menu's Apply, all editing a single SET_NETIF, so there is
+   one copy, not two. Filled from menu_netif at do_interface_menu()
+   entry and overwritten only by each screen's Done (never by a
+   mid-edit ESC, which just discards that screen's own malloc'd
+   working copy - see struct net_edit/ip_edit in gui_iface.c/
+   gui_ip.c). ip/prefix/gateway are kept as text (not yet parsed to
+   bytes) since they're edited as text fields; Apply parses them via
+   parse_ipv4()/prefix_to_netmask(). */
+struct netif_settings {
     unsigned char enabled;
     char ssid[33];
     char psk[65];
@@ -73,14 +75,14 @@ struct pending_netif_settings {
     char gateway[16];
     unsigned char ipv6_enabled;
 };
-extern struct pending_netif_settings pending_settings;
+extern struct netif_settings interface_settings;
 
-/* Fills pending_settings from menu_netif - called once at
+/* Fills interface_settings from menu_netif - called once at
    do_interface_menu() entry, before Network/IP settings can be
    opened. */
-void init_pending_settings();
+void init_interface_settings();
 
-/* Builds and sends SET_NETIF from pending_settings for
+/* Builds and sends SET_NETIF from interface_settings for
    selected_interface. Returns 0 on success (already reported via
    status dialog), non-zero on error (already reported). */
 int apply_netif_settings();
