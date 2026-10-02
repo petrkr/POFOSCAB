@@ -59,6 +59,10 @@ pending   db 0        ; 1 = a receive-block buffer is waiting to be inspected
 saved_ds  dw 0
 saved_dx  dw 0
 payload0  db 0        ; captured payload[0] byte, read out safely below
+just_consumed db 0      ; 1 only for the call that just consumed pending
+last_dispatched db 0xFF ; last payload[0] actually dispatched (0xFF =
+                        ; none yet); never write into the caller's own
+                        ; buffer to track this - see pftd_int61_handler
 
 ; list_src_ds/list_src_si (used by every dispatch_* that needs more than
 ; payload[0] out of the foreign receive buffer) and dta_buf (shared
@@ -105,34 +109,35 @@ pftd_int61_handler:
         push    si
         push    ds
 
+        ; just_consumed stops .no_pending from re-arming pending for
+        ; THIS same call right after we consume it below.
+        mov     byte [cs:just_consumed], 0
         cmp     byte [cs:pending], 0
         je      .no_pending
         mov     byte [cs:pending], 0    ; consume the flag either way
+        mov     byte [cs:just_consumed], 1
 
         ; read payload[0] from the foreign buffer, DS temporarily switched
         mov     ax, [cs:saved_ds]
         mov     ds, ax
         mov     si, [cs:saved_dx]
         mov     al, [si]
-        ; Consume the byte in the foreign buffer itself, not just our
-        ; own pending/payload0 copy of it: the ROM's own idle loop
-        ; re-arms its receive slot (int 0x61 AX=0x3001) periodically
-        ; without a new byte from any client, which otherwise makes
-        ; this handler re-read and re-dispatch the SAME stale command
-        ; byte on every re-arm (confirmed on real hardware and in
-        ; MAME - see project memory "pftd screen log idea"). 0x00
-        ; matches none of this driver's command bytes ([2,6] is the
-        ; ROM's own range, [0x80,0x8E] is ours) or the ROM's, so a
-        ; stale re-read after this is a harmless no-op instead of a
-        ; repeat dispatch. Safe to do: this buffer's only reader after
-        ; the real handshake completes is this same payload[0] check,
-        ; on the ROM's own next idle re-arm.
-        mov     byte [si], 0
+        ; Never write into [si] - it may be the caller's own in-flight
+        ; receive buffer, about to be filled with a real response by
+        ; .chain below (see project memory "pftc dashboard/pftd
+        ; conflict" for the bug this caused when a prior version did).
         push    cs
         pop     ds                      ; DS=CS again immediately, nothing
                                          ; below this line ever uses the
                                          ; foreign segment again
         mov     [cs:payload0], al
+
+        ; Skip dispatch if unchanged since last time (the ROM's idle
+        ; re-arm re-reads the same stale byte periodically) - every
+        ; dispatch_* is idempotent, so a genuine repeat is harmless too.
+        cmp     al, [cs:last_dispatched]
+        je      .no_pending
+        mov     [cs:last_dispatched], al
 
         ; stash the same DS:DX pair for dispatch_list, which (unlike
         ; dispatch_hello) needs more than just payload[0] out of the
@@ -175,6 +180,10 @@ pftd_int61_handler:
 
         cmp     ax, 0x3001
         jne     .chain
+        cmp     byte [cs:just_consumed], 0
+        jne     .chain                  ; don't re-arm on the very call
+                                         ; that just consumed pending -
+                                         ; see the comment above
 
         mov     [cs:saved_ds], ds
         mov     [cs:saved_dx], dx
