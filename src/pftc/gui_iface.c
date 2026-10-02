@@ -27,25 +27,37 @@ static char detail_menu_text[256];
 static char network_settings_menu_text[SETTINGS_FIELD_MAX * 3 + 32];
 static char wifiscan_menu_text[WIFISCAN_MENU_MAX_ITEMS * (32 + 8) + 32];
 
-static char interface_menu_suffix[] = "Status\0Network settings\0IP settings\0\0";
-static char network_settings_ssid[33];
-static char network_settings_psk[65];
-static unsigned char network_settings_enabled;
+static char interface_menu_suffix[] =
+    "Status\0Network settings\0IP settings\0Apply\0\0";
 static unsigned char wifiscan_menu_security[WIFISCAN_MENU_MAX_ITEMS];
 
 static char invalid_psk_dialog_text[] = "PSK must be 8-63 chars, or empty.";
 
-/* Fetches selected_interface fresh, then shows the Status/Network
-   settings/IP settings menu - all three read the same fetch, no
-   further re-fetch until back out to Interfaces and in again. */
+/* Set once do_interface_menu() has fetched+initialized for the
+   current selected_interface; cleared on the way back out to
+   Interfaces so the next entry (possibly a different interface)
+   fetches fresh. Without this, every re-entry from Network/IP
+   settings (both return NAV_INTERFACE_MENU) would re-fetch and
+   clobber whatever the user just edited in pending_settings. */
+static unsigned char interface_menu_initialized;
+
+/* Fetches selected_interface fresh on first entry only, then shows
+   the Status/Network settings/IP settings/Apply menu - all screens
+   read/edit the same fetch and pending_settings, no further re-fetch
+   until back out to Interfaces and in again (see
+   interface_menu_initialized above). */
 enum nav_state do_interface_menu()
 {
     unsigned int bottom_right;
     int result;
     char *p;
 
-    if (fetch_netif(selected_interface, &menu_netif) != 0)
-        return NAV_INTERFACES;
+    if (!interface_menu_initialized) {
+        if (fetch_netif_state(selected_interface, &menu_netif) != 0)
+            return NAV_INTERFACES;
+        init_pending_settings();
+        interface_menu_initialized = 1;
+    }
 
     p = interface_menu_text;
     p += sprintf(p, netif_type_label(menu_netif.info.type)) + 1;
@@ -55,6 +67,7 @@ enum nav_state do_interface_menu()
                        &bottom_right);
     if (screen_push(INTERFACE_MENU_TOP_LEFT, bottom_right) != 0) {
         show_out_of_memory_error();
+        interface_menu_initialized = 0;
         return NAV_INTERFACES;
     }
 
@@ -64,14 +77,20 @@ enum nav_state do_interface_menu()
     pofo_hide_cursor();
     screen_pop();
 
-    if (result == -1)
+    if (result == -1) {
+        interface_menu_initialized = 0;
         return NAV_INTERFACES;
+    }
 
     switch (POFO_LOW_BYTE(result)) {
     case 0: return NAV_DETAIL;
     case 1: return NAV_NETWORK_SETTINGS;
     case 2: return NAV_IP_SETTINGS;
+    case 3:
+        apply_netif_settings();
+        return NAV_INTERFACE_MENU;
     }
+    interface_menu_initialized = 0;
     return NAV_INTERFACES;
 }
 
@@ -83,20 +102,21 @@ static void build_detail_text()
     p += sprintf(p, "Interface Detail") + 1;
 
     if (menu_netif.info.type == PFTC_WIFI_CLIENT) {
-        if (menu_netif.ssid_length == 0xFF)
+        if (menu_netif.ext.wificli.fields.ssid_length == 0xFF)
             strcpy(p, "SSID: invalid");
-        else if (menu_netif.ssid_length == 0xFE)
+        else if (menu_netif.ext.wificli.fields.ssid_length == 0xFE)
             strcpy(p, "SSID: unavailable");
         else
-            sprintf(p, "SSID: %s", menu_netif.ssid);
+            sprintf(p, "SSID: %s", menu_netif.ext.wificli.ssid);
     } else
         sprintf(p, "Interface %02X", menu_netif.info.interface);
     p += strlen(p) + 1;
 
     if (menu_netif.info.type == PFTC_WIFI_CLIENT &&
-        menu_netif.ssid_length != 0xFF && menu_netif.ssid_length != 0xFE) {
-        p += sprintf(p, "RSSI: %d dBm", menu_netif.rssi) + 1;
-        p += sprintf(p, "Channel: %u", menu_netif.channel) + 1;
+        menu_netif.ext.wificli.fields.ssid_length != 0xFF &&
+        menu_netif.ext.wificli.fields.ssid_length != 0xFE) {
+        p += sprintf(p, "RSSI: %d dBm", menu_netif.ext.wificli.fields.rssi) + 1;
+        p += sprintf(p, "Channel: %u", menu_netif.ext.wificli.fields.channel) + 1;
     }
 
     p += sprintf(p, "IP: %u.%u.%u.%u/%u", menu_netif.info.ipv4[0],
@@ -163,29 +183,30 @@ char *text;
     return len == 0 || (len >= 8 && len <= 63);
 }
 
-/* When disabled, only Enabled/Apply are shown - no point offering
-   Scan/SSID/PSK for a slot that's off. */
+/* When disabled, only Enabled is shown - no point offering Scan/SSID/
+   PSK for a slot that's off. No Apply here - see do_interface_menu()'s
+   Apply, which sends the single shared SET_NETIF for both this screen
+   and IP settings. */
 static void build_network_settings_text()
 {
     char *p;
 
     p = network_settings_menu_text;
     p += sprintf(p, "Network settings") + 1;
-    p += sprintf(p, "Enabled: %s", yesno(network_settings_enabled)) + 1;
-    if (network_settings_enabled) {
+    p += sprintf(p, "Enabled: %s", yesno(pending_settings.enabled)) + 1;
+    if (pending_settings.enabled) {
         p += sprintf(p, "Scan") + 1;
-        p += sprintf(p, "SSID: %s", network_settings_ssid) + 1;
-        p += sprintf(p, "PSK: %s", network_settings_psk) + 1;
+        p += sprintf(p, "SSID: %s", pending_settings.ssid) + 1;
+        p += sprintf(p, "PSK: %s", pending_settings.psk) + 1;
     }
-    p += sprintf(p, "Apply") + 1;
     *p = 0;
 }
 
 /* Scans on selected_interface, shows results as a menu (title +
    "SSID (security, RSSI dBm)" per entry), and on a pick copies the
-   SSID into network_settings_ssid and returns the chosen entry's
+   SSID into pending_settings.ssid and returns the chosen entry's
    security in *security_out. ESC picks nothing (returns 0, leaves
-   network_settings_ssid untouched). SSID bytes are shown as-is per
+   pending_settings.ssid untouched). SSID bytes are shown as-is per
    PFTC_PROTOCOL.md (no filtering) - non-ASCII SSIDs may render as
    garbled glyphs on the Portfolio's charset, which is expected. */
 static int do_wifi_scan_menu(security_out)
@@ -276,17 +297,16 @@ unsigned char *security_out;
     ssid_len = p[0];
     if (ssid_len > 32)
         ssid_len = 32;
-    memcpy(network_settings_ssid, p + 1, ssid_len);
-    network_settings_ssid[ssid_len] = 0;
+    memcpy(pending_settings.ssid, p + 1, ssid_len);
+    pending_settings.ssid[ssid_len] = 0;
     *security_out = wifiscan_menu_security[POFO_LOW_BYTE(result)];
     return 1;
 }
 
-/* Skeleton only - fields are edited and held in memory, but Apply has
-   no SET_NETIF wired up yet (the backend doesn't support it either) -
-   reports "Not supported yet." instead of sending anything. Reads
-   whatever do_interface_menu() last fetched into netif_*; no re-fetch
-   of its own. */
+/* Edits pending_settings.enabled/ssid/psk in place - no Apply of its
+   own, see do_interface_menu()'s Apply. ESC always returns to
+   Interface menu, keeping whatever was edited so far (same
+   shared-state model as IP settings). */
 enum nav_state do_network_settings()
 {
     int result;
@@ -296,12 +316,6 @@ enum nav_state do_network_settings()
     exit_keys[0] = 0x000D;
     exit_keys[1] = 0x001B;
     exit_keys[2] = 0;
-
-    network_settings_enabled = 1;
-    strcpy(network_settings_ssid,
-           (menu_netif.ssid_length != 0xFF && menu_netif.ssid_length != 0xFE) ?
-           menu_netif.ssid : "");
-    network_settings_psk[0] = 0;
 
     pofo_show_cursor();
     last_item = 0;
@@ -325,25 +339,17 @@ enum nav_state do_network_settings()
         }
 
         last_item = POFO_LOW_BYTE(result);
-        if (!network_settings_enabled) {
-            /* Disabled: only Enabled(0)/Apply(1) are on screen at all. */
-            switch (last_item) {
-            case 0:
-                network_settings_enabled = 1;
-                break;
-            case 1:
-                pofo_hide_cursor();
-                pofo_error_dialog(DIALOG_TOP_LEFT, not_supported_dialog_text);
-                screen_pop();
-                return NAV_INTERFACE_MENU;
-            }
+        if (!pending_settings.enabled) {
+            /* Disabled: only Enabled(0) is on screen at all. */
+            if (last_item == 0)
+                pending_settings.enabled = 1;
             screen_pop();
             continue;
         }
 
         switch (last_item) {
         case 0:
-            network_settings_enabled = 0;
+            pending_settings.enabled = 0;
             break;
         case 1:
             if (do_wifi_scan_menu(&scanned_security)) {
@@ -354,8 +360,8 @@ enum nav_state do_network_settings()
                         show_out_of_memory_error();
                         return NAV_INTERFACE_MENU;
                     }
-                    edit_field_validated("PSK", network_settings_psk,
-                                         sizeof(network_settings_psk) - 1, 20,
+                    edit_field_validated("PSK", pending_settings.psk,
+                                         sizeof(pending_settings.psk) - 1, 20,
                                          is_valid_psk, invalid_psk_dialog_text,
                                          exit_keys);
                     last_item = 3;
@@ -363,21 +369,16 @@ enum nav_state do_network_settings()
             }
             break;
         case 2:
-            edit_field_validated("SSID", network_settings_ssid,
-                                 sizeof(network_settings_ssid) - 1, 20,
+            edit_field_validated("SSID", pending_settings.ssid,
+                                 sizeof(pending_settings.ssid) - 1, 20,
                                  is_valid_always, "", exit_keys);
             break;
         case 3:
-            edit_field_validated("PSK", network_settings_psk,
-                                 sizeof(network_settings_psk) - 1, 20,
+            edit_field_validated("PSK", pending_settings.psk,
+                                 sizeof(pending_settings.psk) - 1, 20,
                                  is_valid_psk, invalid_psk_dialog_text,
                                  exit_keys);
             break;
-        case 4:
-            pofo_hide_cursor();
-            pofo_error_dialog(DIALOG_TOP_LEFT, not_supported_dialog_text);
-            screen_pop();
-            return NAV_INTERFACE_MENU;
         }
         screen_pop();
     }

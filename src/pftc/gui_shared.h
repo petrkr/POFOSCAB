@@ -32,12 +32,58 @@ extern unsigned char dashboard_netif_ok;
 extern struct netif_wificli dashboard_netif;
 
 /* Interface menu's own last-fetched state (GET_NETIF on
-   selected_interface, via fetch_netif() at do_interface_menu() entry) -
-   scoped to the menu's lifetime; read by Interface detail/Network
-   settings/IP settings, gone once back out to Interfaces list. */
-extern struct netif_wificli menu_netif;
+   selected_interface, via fetch_netif_state() at do_interface_menu()
+   entry) - scoped to the menu's lifetime; read by Interface
+   detail/Network settings/IP settings, gone once back out to
+   Interfaces list.
+
+   Generic across interface types: info.type (from GET_NETIF's common
+   header, always present) says which ext union member is valid - only
+   wificli exists today, since WiFi client (type=0x01) is the only type
+   with an extension section so far. A future AP/Ethernet extension
+   would add its own member here without disturbing this one. */
+struct netif_state {
+    struct netif_info info;
+    union {
+        struct {
+            struct netif_wificli_ext fields;
+            char ssid[64];
+        } wificli;
+    } ext;
+};
+extern struct netif_state menu_netif;
 
 extern unsigned char selected_interface;
+
+/* Pending edits from Network settings (enabled/ssid/psk) and IP
+   settings (ip_mode/ip/prefix/gateway/ipv6), shared across both
+   screens and read by Interface menu's Apply - all editing a single
+   SET_NETIF, so there is one copy, not two. Initialized from
+   menu_netif at do_interface_menu() entry, same lifetime as
+   menu_netif itself. ip/prefix/gateway are kept as the edited text
+   (not yet parsed to bytes) since they're edited as text fields;
+   Apply parses them via parse_ipv4()/prefix_to_netmask(). */
+struct pending_netif_settings {
+    unsigned char enabled;
+    char ssid[33];
+    char psk[65];
+    unsigned char ip_mode;
+    char ip[16];
+    char prefix[3];
+    char gateway[16];
+    unsigned char ipv6_enabled;
+};
+extern struct pending_netif_settings pending_settings;
+
+/* Fills pending_settings from menu_netif - called once at
+   do_interface_menu() entry, before Network/IP settings can be
+   opened. */
+void init_pending_settings();
+
+/* Builds and sends SET_NETIF from pending_settings for
+   selected_interface. Returns 0 on success (already reported via
+   status dialog), non-zero on error (already reported). */
+int apply_netif_settings();
 
 extern char not_supported_dialog_text[];
 
@@ -45,6 +91,10 @@ extern char not_supported_dialog_text[];
    non-zero on error (already reported); *out is untouched on failure
    so a failed refresh keeps old data. */
 int fetch_netif();
+
+/* Fetches GET_NETIF for `interface` into `*out`, generic across
+   interface types - see struct netif_state. */
+int fetch_netif_state();
 
 char *netif_type_label();
 
