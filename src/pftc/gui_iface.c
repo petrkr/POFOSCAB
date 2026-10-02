@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <conio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "pofo.h"
 #include "smartcable.h"
 #include "pftc_proto.h"
@@ -38,13 +39,14 @@ static char invalid_psk_dialog_text[] = "PSK must be 8-63 chars, or empty.";
    Interfaces so the next entry (possibly a different interface)
    fetches fresh. Without this, every re-entry from Network/IP
    settings (both return NAV_INTERFACE_MENU) would re-fetch and
-   clobber whatever the user just edited in pending_settings. */
+   clobber whatever the user already confirmed via Done into
+   interface_settings. */
 static unsigned char interface_menu_initialized;
 
 /* Fetches selected_interface fresh on first entry only, then shows
    the Status/Network settings/IP settings/Apply menu - all screens
-   read/edit the same fetch and pending_settings, no further re-fetch
-   until back out to Interfaces and in again (see
+   read/edit the same fetch and interface_settings, no further
+   re-fetch until back out to Interfaces and in again (see
    interface_menu_initialized above). */
 enum nav_state do_interface_menu()
 {
@@ -55,7 +57,7 @@ enum nav_state do_interface_menu()
     if (!interface_menu_initialized) {
         if (fetch_netif_state(selected_interface, &menu_netif) != 0)
             return NAV_INTERFACES;
-        init_pending_settings();
+        init_interface_settings();
         interface_menu_initialized = 1;
     }
 
@@ -183,33 +185,46 @@ char *text;
     return len == 0 || (len >= 8 && len <= 63);
 }
 
+/* Local working copy edited by do_network_settings() - malloc'd on
+   entry, discarded (free, no write-back) on ESC, written into
+   interface_settings only on Done. Keeps a mid-edit ESC from
+   clobbering interface_settings, which is what Apply actually sends. */
+struct net_edit {
+    unsigned char enabled;
+    char ssid[33];
+    char psk[65];
+};
+
 /* When disabled, only Enabled is shown - no point offering Scan/SSID/
    PSK for a slot that's off. No Apply here - see do_interface_menu()'s
    Apply, which sends the single shared SET_NETIF for both this screen
    and IP settings. */
-static void build_network_settings_text()
+static void build_network_settings_text(edit)
+struct net_edit *edit;
 {
     char *p;
 
     p = network_settings_menu_text;
     p += sprintf(p, "Network settings") + 1;
-    p += sprintf(p, "Enabled: %s", yesno(pending_settings.enabled)) + 1;
-    if (pending_settings.enabled) {
+    p += sprintf(p, "Enabled: %s", yesno(edit->enabled)) + 1;
+    if (edit->enabled) {
         p += sprintf(p, "Scan") + 1;
-        p += sprintf(p, "SSID: %s", pending_settings.ssid) + 1;
-        p += sprintf(p, "PSK: %s", pending_settings.psk) + 1;
+        p += sprintf(p, "SSID: %s", edit->ssid) + 1;
+        p += sprintf(p, "PSK: %s", edit->psk) + 1;
     }
+    p += sprintf(p, "Done") + 1;
     *p = 0;
 }
 
 /* Scans on selected_interface, shows results as a menu (title +
    "SSID (security, RSSI dBm)" per entry), and on a pick copies the
-   SSID into pending_settings.ssid and returns the chosen entry's
-   security in *security_out. ESC picks nothing (returns 0, leaves
-   pending_settings.ssid untouched). SSID bytes are shown as-is per
+   SSID into ssid_out and returns the chosen entry's security in
+   *security_out. ESC picks nothing (returns 0, leaves *ssid_out/
+   *security_out untouched). SSID bytes are shown as-is per
    PFTC_PROTOCOL.md (no filtering) - non-ASCII SSIDs may render as
    garbled glyphs on the Portfolio's charset, which is expected. */
-static int do_wifi_scan_menu(security_out)
+static int do_wifi_scan_menu(ssid_out, security_out)
+char *ssid_out;
 unsigned char *security_out;
 {
     unsigned int received;
@@ -297,71 +312,97 @@ unsigned char *security_out;
     ssid_len = p[0];
     if (ssid_len > 32)
         ssid_len = 32;
-    memcpy(pending_settings.ssid, p + 1, ssid_len);
-    pending_settings.ssid[ssid_len] = 0;
+    memcpy(ssid_out, p + 1, ssid_len);
+    ssid_out[ssid_len] = 0;
     *security_out = wifiscan_menu_security[POFO_LOW_BYTE(result)];
     return 1;
 }
 
-/* Edits pending_settings.enabled/ssid/psk in place - no Apply of its
-   own, see do_interface_menu()'s Apply. ESC always returns to
-   Interface menu, keeping whatever was edited so far (same
-   shared-state model as IP settings). */
+/* Edits a malloc'd local copy of enabled/ssid/psk, seeded from
+   interface_settings - no Apply of its own, see do_interface_menu()'s
+   Apply. ESC frees the copy and returns to Interface menu without
+   touching interface_settings (edits so far just evaporate); Done
+   writes the copy back into interface_settings first. */
 enum nav_state do_network_settings()
 {
+    struct net_edit *edit;
     int result;
     unsigned char last_item;
+    unsigned char done_item;
     unsigned char scanned_security;
     unsigned int exit_keys[3];
     exit_keys[0] = 0x000D;
     exit_keys[1] = 0x001B;
     exit_keys[2] = 0;
 
+    edit = malloc(sizeof(struct net_edit));
+    if (edit == NULL) {
+        show_out_of_memory_error();
+        return NAV_INTERFACE_MENU;
+    }
+    edit->enabled = interface_settings.enabled;
+    strcpy(edit->ssid, interface_settings.ssid);
+    strcpy(edit->psk, interface_settings.psk);
+
     pofo_show_cursor();
     last_item = 0;
 
     for (;;) {
         if (screen_push(POFO_COORD(1, 1), POFO_COORD(7, 38)) != 0) {
+            free(edit);
             show_out_of_memory_error();
             return NAV_INTERFACE_MENU;
         }
 
-        build_network_settings_text();
+        build_network_settings_text(edit);
+        done_item = edit->enabled ? 4 : 1;
 
         result = pofo_menu_show(SETTINGS_MENU_TOP_LEFT,
                                 network_settings_menu_text, 0, 0, last_item,
                                 SETTINGS_MENU_TYPE_DEPTH);
 
         if (result == -1) {
+            free(edit);
             pofo_hide_cursor();
             screen_pop();
             return NAV_INTERFACE_MENU;
         }
 
         last_item = POFO_LOW_BYTE(result);
-        if (!pending_settings.enabled) {
-            /* Disabled: only Enabled(0) is on screen at all. */
+        if (last_item == done_item) {
+            interface_settings.enabled = edit->enabled;
+            strcpy(interface_settings.ssid, edit->ssid);
+            strcpy(interface_settings.psk, edit->psk);
+            free(edit);
+            pofo_hide_cursor();
+            screen_pop();
+            return NAV_INTERFACE_MENU;
+        }
+
+        if (!edit->enabled) {
+            /* Disabled: only Enabled(0)/Done(1) are on screen at all. */
             if (last_item == 0)
-                pending_settings.enabled = 1;
+                edit->enabled = 1;
             screen_pop();
             continue;
         }
 
         switch (last_item) {
         case 0:
-            pending_settings.enabled = 0;
+            edit->enabled = 0;
             break;
         case 1:
-            if (do_wifi_scan_menu(&scanned_security)) {
+            if (do_wifi_scan_menu(edit->ssid, &scanned_security)) {
                 last_item = 2;
                 if (scanned_security != PFTC_SECURITY_OPEN) {
                     screen_pop();
                     if (screen_push(POFO_COORD(1, 1), POFO_COORD(7, 38)) != 0) {
+                        free(edit);
                         show_out_of_memory_error();
                         return NAV_INTERFACE_MENU;
                     }
-                    edit_field_validated("PSK", pending_settings.psk,
-                                         sizeof(pending_settings.psk) - 1, 20,
+                    edit_field_validated("PSK", edit->psk,
+                                         sizeof(edit->psk) - 1, 20,
                                          is_valid_psk, invalid_psk_dialog_text,
                                          exit_keys);
                     last_item = 3;
@@ -369,13 +410,13 @@ enum nav_state do_network_settings()
             }
             break;
         case 2:
-            edit_field_validated("SSID", pending_settings.ssid,
-                                 sizeof(pending_settings.ssid) - 1, 20,
+            edit_field_validated("SSID", edit->ssid,
+                                 sizeof(edit->ssid) - 1, 20,
                                  is_valid_always, "", exit_keys);
             break;
         case 3:
-            edit_field_validated("PSK", pending_settings.psk,
-                                 sizeof(pending_settings.psk) - 1, 20,
+            edit_field_validated("PSK", edit->psk,
+                                 sizeof(edit->psk) - 1, 20,
                                  is_valid_psk, invalid_psk_dialog_text,
                                  exit_keys);
             break;

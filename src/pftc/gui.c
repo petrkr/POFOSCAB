@@ -44,12 +44,10 @@ struct netif_state menu_netif;
 
 unsigned char selected_interface;
 
-/* Pending Network/IP settings edits, shared across both screens and
-   applied together by do_interface_menu()'s Apply - see struct
-   pending_netif_settings in gui_shared.h. */
-struct pending_netif_settings pending_settings;
-
-static char applied_dialog_text[] = "Applied.";
+/* Interface menu's editable settings, shared across Network/IP
+   settings and applied together by do_interface_menu()'s Apply - see
+   struct netif_settings in gui_shared.h. */
+struct netif_settings interface_settings;
 
 static char root_menu_text[] = "PFTC\0Interfaces\0Reconnect\0Info\0Exit\0\0";
 static char interfaces_menu_text[INTERFACES_MENU_MAX_ITEMS * 16 + 16];
@@ -442,34 +440,34 @@ enum nav_state do_interfaces_list()
     return NAV_INTERFACE_MENU;
 }
 
-/* Fills pending_settings from menu_netif - called once at
+/* Fills interface_settings from menu_netif - called once at
    do_interface_menu() entry, before Network/IP settings can be
    opened. DHCP/static mode and IPv6 default to off since GET_NETIF's
    ip_mode/ipv6_enabled fields didn't exist until this wire-format
    change; once the ESP side reports them for real, read them here
    instead. */
-void init_pending_settings()
+void init_interface_settings()
 {
-    pending_settings.enabled = menu_netif.info.enabled;
-    strcpy(pending_settings.ssid,
+    interface_settings.enabled = menu_netif.info.enabled;
+    strcpy(interface_settings.ssid,
            (menu_netif.info.type == PFTC_WIFI_CLIENT &&
             menu_netif.ext.wificli.fields.ssid_length != 0xFF &&
             menu_netif.ext.wificli.fields.ssid_length != 0xFE) ?
            menu_netif.ext.wificli.ssid : "");
-    pending_settings.psk[0] = 0;
+    interface_settings.psk[0] = 0;
 
-    pending_settings.ip_mode = PFTC_IP_MODE_DHCP;
-    sprintf(pending_settings.ip, "%u.%u.%u.%u", menu_netif.info.ipv4[0],
+    interface_settings.ip_mode = PFTC_IP_MODE_DHCP;
+    sprintf(interface_settings.ip, "%u.%u.%u.%u", menu_netif.info.ipv4[0],
             menu_netif.info.ipv4[1], menu_netif.info.ipv4[2],
             menu_netif.info.ipv4[3]);
-    sprintf(pending_settings.prefix, "%u", menu_netif.info.netmask_prefix);
-    sprintf(pending_settings.gateway, "%u.%u.%u.%u", menu_netif.info.gateway[0],
+    sprintf(interface_settings.prefix, "%u", menu_netif.info.netmask_prefix);
+    sprintf(interface_settings.gateway, "%u.%u.%u.%u", menu_netif.info.gateway[0],
             menu_netif.info.gateway[1], menu_netif.info.gateway[2],
             menu_netif.info.gateway[3]);
-    pending_settings.ipv6_enabled = 0;
+    interface_settings.ipv6_enabled = 0;
 }
 
-/* Builds and sends SET_NETIF from pending_settings for
+/* Builds and sends SET_NETIF from interface_settings for
    selected_interface, per PFTC_PROTOCOL.md's merged SET_NETIF layout:
    interface/type/enabled/ip_mode/ip/netmask/gateway/ipv6/ssid/psk.
    Returns 0 on success, non-zero on error (already reported). */
@@ -484,29 +482,29 @@ int apply_netif_settings()
     *p++ = PFTC_SET_NETIF;
     *p++ = selected_interface;
     *p++ = menu_netif.info.type;
-    *p++ = pending_settings.enabled;
-    *p++ = pending_settings.ip_mode;
+    *p++ = interface_settings.enabled;
+    *p++ = interface_settings.ip_mode;
 
-    if (pending_settings.ip_mode == PFTC_IP_MODE_STATIC) {
-        parse_ipv4(pending_settings.ip, p);
+    if (interface_settings.ip_mode == PFTC_IP_MODE_STATIC) {
+        parse_ipv4(interface_settings.ip, p);
         p += 4;
-        *p++ = (unsigned char)parse_prefix(pending_settings.prefix);
-        parse_ipv4(pending_settings.gateway, p);
+        *p++ = (unsigned char)parse_prefix(interface_settings.prefix);
+        parse_ipv4(interface_settings.gateway, p);
         p += 4;
     } else {
         memset(p, 0, 9);
         p += 9;
     }
-    *p++ = pending_settings.ipv6_enabled;
+    *p++ = interface_settings.ipv6_enabled;
 
-    ssid_len = strlen(pending_settings.ssid);
+    ssid_len = strlen(interface_settings.ssid);
     *p++ = ssid_len;
-    memcpy(p, pending_settings.ssid, ssid_len);
+    memcpy(p, interface_settings.ssid, ssid_len);
     p += ssid_len;
 
-    psk_len = strlen(pending_settings.psk);
+    psk_len = strlen(interface_settings.psk);
     *p++ = psk_len;
-    memcpy(p, pending_settings.psk, psk_len);
+    memcpy(p, interface_settings.psk, psk_len);
     p += psk_len;
 
     progress_dialog_open("Applying");
@@ -527,7 +525,7 @@ int apply_netif_settings()
         return 1;
     }
 
-    pofo_error_dialog(DIALOG_TOP_LEFT, applied_dialog_text);
+    show_applied_message();
     return 0;
 }
 

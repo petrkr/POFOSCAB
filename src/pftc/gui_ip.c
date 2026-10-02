@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <conio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "pofo.h"
 #include "smartcable.h"
 #include "pftc_proto.h"
@@ -19,71 +20,115 @@ static char invalid_prefix_dialog_text[] = "Prefix must be 0-32.";
    takes whatever is there; stricter validation isn't worth it for a
    field that already passed is_valid_ipv4(). "" doesn't parse as
    valid either, same as any other bad value. */
+/* Local working copy edited by do_ip_settings() - malloc'd on entry,
+   discarded (free, no write-back) on ESC, written into
+   interface_settings only on Done. Keeps a mid-edit ESC from
+   clobbering interface_settings, which is what Apply actually sends. */
+struct ip_edit {
+    unsigned char ip_mode;
+    char ip[16];
+    char prefix[3];
+    char gateway[16];
+    unsigned char ipv6_enabled;
+};
+
 /* Under DHCP, only Mode/IPv6 are shown - no point offering IP/Prefix/
    Gateway for fields DHCP overwrites anyway. No Apply here - see
    do_interface_menu()'s Apply, which sends the single shared
    SET_NETIF for both this screen and Network settings. */
-static void build_ip_settings_text()
+static void build_ip_settings_text(edit)
+struct ip_edit *edit;
 {
     char *p;
 
     p = ip_settings_menu_text;
     p += sprintf(p, "IP settings") + 1;
     p += sprintf(p, "Mode: %s",
-                pending_settings.ip_mode == PFTC_IP_MODE_STATIC ? "Static" : "DHCP") + 1;
-    if (pending_settings.ip_mode == PFTC_IP_MODE_STATIC) {
-        p += sprintf(p, "IP: %s", pending_settings.ip) + 1;
-        p += sprintf(p, "Prefix: %s", pending_settings.prefix) + 1;
-        p += sprintf(p, "Gateway: %s", pending_settings.gateway) + 1;
+                edit->ip_mode == PFTC_IP_MODE_STATIC ? "Static" : "DHCP") + 1;
+    if (edit->ip_mode == PFTC_IP_MODE_STATIC) {
+        p += sprintf(p, "IP: %s", edit->ip) + 1;
+        p += sprintf(p, "Prefix: %s", edit->prefix) + 1;
+        p += sprintf(p, "Gateway: %s", edit->gateway) + 1;
     }
-    p += sprintf(p, "IPv6: %s", yesno(pending_settings.ipv6_enabled)) + 1;
+    p += sprintf(p, "IPv6: %s", yesno(edit->ipv6_enabled)) + 1;
+    p += sprintf(p, "Done") + 1;
     *p = 0;
 }
 
-/* Edits pending_settings.ip_mode/ip/prefix/gateway/ipv6_enabled in
-   place - no Apply of its own, see do_interface_menu()'s Apply. ESC
-   always returns to Interface menu, keeping whatever was edited so
-   far (same shared-state model as Network settings). */
+/* Edits a malloc'd local copy of ip_mode/ip/prefix/gateway/
+   ipv6_enabled, seeded from interface_settings - no Apply of its own,
+   see do_interface_menu()'s Apply. ESC frees the copy and returns to
+   Interface menu without touching interface_settings (edits so far
+   just evaporate); Done writes the copy back into interface_settings
+   first. */
 enum nav_state do_ip_settings()
 {
+    struct ip_edit *edit;
     int result;
     unsigned char last_item;
+    unsigned char done_item;
     unsigned int exit_keys[3];
 
     exit_keys[0] = 0x000D;
     exit_keys[1] = 0x001B;
     exit_keys[2] = 0;
 
+    edit = malloc(sizeof(struct ip_edit));
+    if (edit == NULL) {
+        show_out_of_memory_error();
+        return NAV_INTERFACE_MENU;
+    }
+    edit->ip_mode = interface_settings.ip_mode;
+    strcpy(edit->ip, interface_settings.ip);
+    strcpy(edit->prefix, interface_settings.prefix);
+    strcpy(edit->gateway, interface_settings.gateway);
+    edit->ipv6_enabled = interface_settings.ipv6_enabled;
+
     pofo_show_cursor();
     last_item = 0;
 
     for (;;) {
         if (screen_push(POFO_COORD(1, 1), POFO_COORD(7, 38)) != 0) {
+            free(edit);
             show_out_of_memory_error();
             return NAV_INTERFACE_MENU;
         }
 
-        build_ip_settings_text();
+        build_ip_settings_text(edit);
+        done_item = edit->ip_mode == PFTC_IP_MODE_STATIC ? 5 : 2;
 
         result = pofo_menu_show(SETTINGS_MENU_TOP_LEFT,
                                 ip_settings_menu_text, 0, 0, last_item,
                                 SETTINGS_MENU_TYPE_DEPTH);
 
         if (result == -1) {
+            free(edit);
             pofo_hide_cursor();
             screen_pop();
             return NAV_INTERFACE_MENU;
         }
 
         last_item = POFO_LOW_BYTE(result);
-        if (pending_settings.ip_mode != PFTC_IP_MODE_STATIC) {
-            /* DHCP: only Mode(0)/IPv6(1) are on screen. */
+        if (last_item == done_item) {
+            interface_settings.ip_mode = edit->ip_mode;
+            strcpy(interface_settings.ip, edit->ip);
+            strcpy(interface_settings.prefix, edit->prefix);
+            strcpy(interface_settings.gateway, edit->gateway);
+            interface_settings.ipv6_enabled = edit->ipv6_enabled;
+            free(edit);
+            pofo_hide_cursor();
+            screen_pop();
+            return NAV_INTERFACE_MENU;
+        }
+
+        if (edit->ip_mode != PFTC_IP_MODE_STATIC) {
+            /* DHCP: only Mode(0)/IPv6(1)/Done(2) are on screen. */
             switch (last_item) {
             case 0:
-                pending_settings.ip_mode = PFTC_IP_MODE_STATIC;
+                edit->ip_mode = PFTC_IP_MODE_STATIC;
                 break;
             case 1:
-                pending_settings.ipv6_enabled = !pending_settings.ipv6_enabled;
+                edit->ipv6_enabled = !edit->ipv6_enabled;
                 break;
             }
             screen_pop();
@@ -92,28 +137,28 @@ enum nav_state do_ip_settings()
 
         switch (last_item) {
         case 0:
-            pending_settings.ip_mode = PFTC_IP_MODE_DHCP;
+            edit->ip_mode = PFTC_IP_MODE_DHCP;
             break;
         case 1:
-            edit_field_validated("IP", pending_settings.ip,
-                                 sizeof(pending_settings.ip) - 1, 18,
+            edit_field_validated("IP", edit->ip,
+                                 sizeof(edit->ip) - 1, 18,
                                  is_valid_ipv4, invalid_ipv4_dialog_text,
                                  exit_keys);
             break;
         case 2:
-            edit_field_validated("Prefix", pending_settings.prefix,
-                                 sizeof(pending_settings.prefix) - 1, 12,
+            edit_field_validated("Prefix", edit->prefix,
+                                 sizeof(edit->prefix) - 1, 12,
                                  is_valid_prefix, invalid_prefix_dialog_text,
                                  exit_keys);
             break;
         case 3:
-            edit_field_validated("Gateway", pending_settings.gateway,
-                                 sizeof(pending_settings.gateway) - 1, 18,
+            edit_field_validated("Gateway", edit->gateway,
+                                 sizeof(edit->gateway) - 1, 18,
                                  is_valid_ipv4, invalid_ipv4_dialog_text,
                                  exit_keys);
             break;
         case 4:
-            pending_settings.ipv6_enabled = !pending_settings.ipv6_enabled;
+            edit->ipv6_enabled = !edit->ipv6_enabled;
             break;
         }
         screen_pop();

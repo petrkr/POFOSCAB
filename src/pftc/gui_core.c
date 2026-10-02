@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <conio.h>
 #include "pofo.h"
+#include "smartcable.h"
 #include "gui_core.h"
 
 #define SIGNAL_BAR_FULL   0xDB
@@ -30,6 +31,7 @@ static char *progress_dialog_text;
 static char transport_error_dialog_text[] = "SmartCable error\nTransport failed.";
 static char protocol_error_dialog_text[] = "Invalid response.";
 static char oom_error_dialog_text[] = "Out of memory.";
+static char applied_dialog_text[] = "Applied.";
 
 void status_init()
 {
@@ -83,6 +85,28 @@ void show_protocol_error()
 void show_out_of_memory_error()
 {
     pofo_error_dialog(DIALOG_TOP_LEFT, oom_error_dialog_text);
+}
+
+/* Self-dismissing confirmation, unlike pofo_error_dialog() - no
+   keypress wait (so it doesn't block Apply's caller) and no error
+   beep (this isn't an error). Reuses progress_dialog's own save
+   buffer/title since the two never overlap. */
+void show_applied_message()
+{
+    pofo_screen_save(DIALOG_TOP_LEFT,
+                      pofo_dialog_extent(DIALOG_TOP_LEFT,
+                                         applied_dialog_text,
+                                         progress_dialog_title),
+                      dialog_screen_buffer);
+    pofo_message_dialog(DIALOG_TOP_LEFT, applied_dialog_text,
+                        progress_dialog_title);
+    smartcable_wait_500ms();
+    smartcable_wait_500ms();
+    pofo_screen_restore(DIALOG_TOP_LEFT,
+                         pofo_dialog_extent(DIALOG_TOP_LEFT,
+                                            applied_dialog_text,
+                                            progress_dialog_title),
+                         dialog_screen_buffer);
 }
 
 void progress_dialog_open(text)
