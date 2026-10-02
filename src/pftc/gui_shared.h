@@ -13,23 +13,11 @@
     ((SETTINGS_MENU_HEIGHT_LIMIT << 3) | POFO_BOX_DOUBLE)
 #define SETTINGS_FIELD_MAX 64
 
-/* GET_NETIF's struct netif_info plus its WiFi client extension
-   fields (channel/rssi/ssid), parsed separately in fetch_netif() from
-   the bytes right after the fixed struct. ssid_length 0xFF/0xFE are
-   sentinels ("invalid"/"unavailable" - see fetch_netif()). */
-struct netif_wificli {
-    struct netif_info info;
-    unsigned char channel;
-    signed char rssi;
-    unsigned char ssid_length;
-    char ssid[64];
-};
-
-/* Dashboard's own last-fetched state (GET_NETIF on interface [0], via
-   do_fetch_netif()/handshake or F5) - independent of menu_netif below.
-   Valid only when dashboard_netif_ok. */
-extern unsigned char dashboard_netif_ok;
-extern struct netif_wificli dashboard_netif;
+/* Dashboard's drawn/not-drawn state - set by do_fetch_dashboard()
+   (GET_DASHBOARD FULL, via handshake/Reconnect/F5). The dashboard
+   itself carries no client-side copy of the fetched fields anymore -
+   entries are drawn as received, at the ESP-given position. */
+extern unsigned char dashboard_ok;
 
 /* Interface menu's own last-fetched state (GET_NETIF on
    selected_interface, via fetch_netif_state() at do_interface_menu()
@@ -88,11 +76,6 @@ void init_interface_settings();
 int apply_netif_settings();
 
 extern char not_supported_dialog_text[];
-
-/* Fetches GET_NETIF for `interface` into `*out`. Returns 0 on success,
-   non-zero on error (already reported); *out is untouched on failure
-   so a failed refresh keeps old data. */
-int fetch_netif();
 
 /* Fetches GET_NETIF for `interface` into `*out`, generic across
    interface types - see struct netif_state. */

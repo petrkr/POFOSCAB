@@ -35,9 +35,9 @@ static unsigned char hello_version_minor;
 static unsigned char hello_version_patch;
 static unsigned char hello_build_id[4];
 
-/* Dashboard's own fetch; see struct netif_wificli in gui_shared.h. */
-unsigned char dashboard_netif_ok;
-struct netif_wificli dashboard_netif;
+/* Dashboard's own fetch - GET_DASHBOARD FULL entries, drawn as-is at
+   their given position. Valid only when dashboard_ok. */
+unsigned char dashboard_ok;
 
 /* Interface menu's own fetch; scoped to the menu's lifetime. */
 struct netif_state menu_netif;
@@ -56,67 +56,6 @@ static char edit_backup[65];
 
 char not_supported_dialog_text[] = "Not supported yet.";
 static char offline_dialog_text[] = "Offline - try Reconnect.";
-
-/* Fetches GET_NETIF for `interface` into `*out`. Returns 0 on success,
-   non-zero on error (already reported); *out is untouched on failure
-   so a failed refresh keeps old data. */
-int fetch_netif(interface, out)
-unsigned char interface;
-struct netif_wificli *out;
-{
-    unsigned int received;
-    unsigned int wifi_size;
-    unsigned char *ssid_bytes;
-    int status;
-    struct netif_info *netif;
-    struct netif_wificli_ext *ext;
-
-    netif_request[1] = interface;
-    progress_dialog_open("Getting interface");
-    status = smartcable_exchange(netif_request, sizeof(netif_request),
-                           response, sizeof(response), &received);
-    progress_dialog_close();
-    if (status != 0) {
-        show_transport_error();
-        return 1;
-    }
-    if (received < sizeof(struct netif_info)) {
-        show_protocol_error();
-        return 1;
-    }
-    netif = (struct netif_info *)response;
-    if (netif->error != 0) {
-        show_protocol_error();
-        return 1;
-    }
-
-    out->info = *netif;
-
-    out->channel = 0;
-    out->rssi = -128;
-    out->ssid_length = 0;
-    if (netif->type == PFTC_WIFI_CLIENT) {
-        wifi_size = received - sizeof(struct netif_info);
-        if (wifi_size >= sizeof(struct netif_wificli_ext)) {
-            ext = (struct netif_wificli_ext *)(response + sizeof(struct netif_info));
-            out->channel = ext->channel;
-            out->rssi = ext->rssi;
-            out->ssid_length = ext->ssid_length;
-            if (out->ssid_length > sizeof(out->ssid) - 1)
-                out->ssid_length = sizeof(out->ssid) - 1;
-            if (wifi_size >= sizeof(struct netif_wificli_ext) + ext->ssid_length) {
-                ssid_bytes = response + sizeof(struct netif_info) +
-                             sizeof(struct netif_wificli_ext);
-                memcpy(out->ssid, ssid_bytes, out->ssid_length);
-                out->ssid[out->ssid_length] = 0;
-            } else
-                out->ssid_length = 0xFF; /* sentinel: "invalid" */
-        } else
-            out->ssid_length = 0xFE; /* sentinel: "unavailable" */
-    }
-
-    return 0;
-}
 
 /* Fetches GET_NETIF for `interface` into `*out`, generic across
    interface types - see struct netif_state in gui_shared.h. Returns 0
@@ -179,39 +118,63 @@ struct netif_state *out;
     return 0;
 }
 
-/* Returns 0 on success, non-zero on error (already reported).
-   dashboard_netif_ok stays untouched on failure so a failed refresh
-   keeps old data. */
-static int do_fetch_netif()
+/* Draws one GET_DASHBOARD FULL entry at its given position - no
+   layout/formatting decisions here, the ESP already picked position
+   and content; this is just a dumb writer. */
+static void draw_dashboard_entry(row, col, len, payload)
+unsigned char row;
+unsigned char col;
+unsigned char len;
+unsigned char *payload;
+{
+    gotoxy(col, row);
+    fwrite(payload, 1, len, stdout);
+    fflush(stdout);
+}
+
+/* Fetches GET_DASHBOARD (mode=FULL) and draws every entry as received.
+   Returns 0 on success, non-zero on error (already reported);
+   dashboard_ok stays untouched on failure so a failed refresh keeps
+   whatever was last drawn on screen. */
+static int do_fetch_dashboard()
 {
     unsigned int received;
-    unsigned int entries_size;
+    unsigned char *p, *end;
+    unsigned char id, row, col, len;
     int status;
-    struct netifs_response *netifs;
 
-    progress_dialog_open("Getting interfaces");
-    status = smartcable_exchange(netifs_request, sizeof(netifs_request),
-                           response, sizeof(response), &received);
+    progress_dialog_open("Getting dashboard");
+    status = smartcable_exchange(dashboard_request, sizeof(dashboard_request),
+                           dashboard_response, sizeof(dashboard_response), &received);
     progress_dialog_close();
     if (status != 0) {
         show_transport_error();
         return 1;
     }
-    if (received < 3) {
-        show_protocol_error();
-        return 1;
-    }
-    netifs = (struct netifs_response *)response;
-    entries_size = received - 3;
-    if (netifs->error != 0 || netifs->count == 0 ||
-        netifs->count > entries_size / sizeof(struct netif_entry)) {
+    if (received < 2 || dashboard_response[0] != 0x20) {
         show_protocol_error();
         return 1;
     }
 
-    if (fetch_netif(netifs->entries[0].interface, &dashboard_netif) != 0)
-        return 1;
-    dashboard_netif_ok = 1;
+    p = dashboard_response + 2;
+    end = dashboard_response + received;
+    while (p < end) {
+        if (p + 4 > end)
+            break; /* truncated entry header */
+        id = p[0];
+        row = p[1];
+        col = p[2];
+        len = p[3];
+        p += 4;
+        if (p + len > end)
+            break; /* truncated payload */
+
+        draw_dashboard_entry(row, col, len, p);
+        p += len;
+        (void)id; /* not used yet - no PARTIAL refresh/targeting so far */
+    }
+
+    dashboard_ok = 1;
     return 0;
 }
 
@@ -256,52 +219,8 @@ enum nav_state do_handshake()
     status_set(status_text);
 
     smartcable_wait_500ms();
-    do_fetch_netif();
+    do_fetch_dashboard();
     return NAV_DASHBOARD;
-}
-
-static void draw_dashboard()
-{
-    if (!dashboard_netif_ok) {
-        status_set("Offline");
-        return;
-    }
-
-    gotoxy(2, 1);
-    if (dashboard_netif.info.type == PFTC_WIFI_CLIENT) {
-        if (dashboard_netif.ssid_length == 0xFF)
-            printf("SSID: invalid");
-        else if (dashboard_netif.ssid_length == 0xFE)
-            printf("SSID: unavailable");
-        else {
-            printf("SSID: %s", dashboard_netif.ssid);
-            fflush(stdout);
-            gotoxy(38 - SIGNAL_BAR_LEVELS - 3, 1);
-            putchar(' ');
-            putchar((unsigned char)0xB3);
-            putchar(' ');
-            print_signal_bar(dashboard_netif.rssi);
-        }
-    } else
-        printf("Interface %02X", dashboard_netif.info.interface);
-    fflush(stdout);
-
-    gotoxy(2, 2);
-    printf("IP: ");
-    print_ipv4(dashboard_netif.info.ipv4);
-    printf("/%u", dashboard_netif.info.netmask_prefix);
-    fflush(stdout);
-    gotoxy(2, 3);
-    printf("GW: ");
-    print_ipv4(dashboard_netif.info.gateway);
-    fflush(stdout);
-    gotoxy(2, 4);
-    printf("DNS: ");
-    print_ipv4(dashboard_netif.info.dns);
-    fflush(stdout);
-    gotoxy(2, 5);
-    printf("CH%u", dashboard_netif.channel);
-    fflush(stdout);
 }
 
 /* Never fetches on its own - F5 re-fetches, do_handshake()/Reconnect
@@ -310,15 +229,15 @@ enum nav_state do_dashboard()
 {
     int key;
 
-    draw_dashboard();
+    if (!dashboard_ok)
+        status_set("Offline");
 
     for (;;) {
         key = getch();
         if (key == PFTC_F9 || key == PFTC_ATARI)
             return NAV_ROOT_MENU;
         if (key == PFTC_F5) {
-            do_fetch_netif();
-            draw_dashboard();
+            do_fetch_dashboard();
             continue;
         }
         if (key == PFTC_CTRL_Q)
@@ -352,7 +271,7 @@ enum nav_state do_root_menu()
     selected = POFO_LOW_BYTE(result);
     switch (selected) {
     case 0:
-        if (!dashboard_netif_ok) {
+        if (!dashboard_ok) {
             pofo_error_dialog(NAV_MENU_TOP_LEFT, offline_dialog_text);
             return NAV_ROOT_MENU;
         }

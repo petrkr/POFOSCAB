@@ -6,7 +6,10 @@
 #define PFTC_GET_NETIF    0x03
 #define PFTC_SET_NETIF    0x04
 #define PFTC_GET_WIFISCAN 0x07
+#define PFTC_GET_DASHBOARD 0x08
 #define PFTC_WIFI_CLIENT  0x01
+
+#define PFTC_DASHBOARD_MODE_FULL 0x00
 
 #define PFTC_IP_MODE_DHCP   0x00
 #define PFTC_IP_MODE_STATIC 0x01
@@ -67,6 +70,7 @@ extern unsigned char hello_request[1];
 extern unsigned char netifs_request[1];
 extern unsigned char netif_request[2];
 extern unsigned char wifiscan_request[2];
+extern unsigned char dashboard_request[2];
 extern unsigned char response[64];
 
 /* SET_NETIF request buffer, built in place by apply_netif_settings():
@@ -83,5 +87,12 @@ extern unsigned char set_netif_request[SET_NETIF_REQUEST_SIZE];
    so every other, small exchange doesn't pay for this one's worst case. */
 #define WIFISCAN_RESPONSE_SIZE 360
 extern unsigned char wifiscan_response[WIFISCAN_RESPONSE_SIZE];
+
+/* GET_DASHBOARD FULL is variable length (one entry per displayed
+   field, each up to 4 + 38 bytes) - kept separate from response[] for
+   the same reason as wifiscan_response above. 256 bytes comfortably
+   covers a handful of entries on a 40-column display. */
+#define DASHBOARD_RESPONSE_SIZE 256
+extern unsigned char dashboard_response[DASHBOARD_RESPONSE_SIZE];
 
 #endif

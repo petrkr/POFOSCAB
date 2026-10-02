@@ -5,11 +5,6 @@
 #include "smartcable.h"
 #include "gui_core.h"
 
-#define SIGNAL_BAR_FULL   0xDB
-#define SIGNAL_BAR_EMPTY  0xB0
-#define SIGNAL_BAR_MIN   -90
-#define SIGNAL_BAR_MAX   -40
-
 #define SCREEN_STACK_MAX 3
 
 struct screen_frame {
@@ -45,29 +40,6 @@ char *text;
     gotoxy(2, 7);
     printf(" %.*s ", 34, text);
     fflush(stdout);
-}
-
-void print_ipv4(address)
-unsigned char *address;
-{
-    printf("%u.%u.%u.%u", address[0], address[1], address[2], address[3]);
-}
-
-void print_signal_bar(rssi)
-int rssi;
-{
-    unsigned char level, filled;
-
-    if (rssi <= SIGNAL_BAR_MIN)
-        filled = 0;
-    else if (rssi >= SIGNAL_BAR_MAX)
-        filled = SIGNAL_BAR_LEVELS;
-    else
-        filled = (unsigned char)((rssi - SIGNAL_BAR_MIN) * SIGNAL_BAR_LEVELS /
-                                  (SIGNAL_BAR_MAX - SIGNAL_BAR_MIN));
-
-    for (level = 0; level < SIGNAL_BAR_LEVELS; level++)
-        putchar((unsigned char)(level < filled ? SIGNAL_BAR_FULL : SIGNAL_BAR_EMPTY));
 }
 
 void show_transport_error()
