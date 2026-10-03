@@ -28,25 +28,18 @@
 
 static char status_text[40];
 
-/* Stashed from HELLO for do_info_screen(); valid only when hello_ok. */
 static unsigned char hello_ok;
 static unsigned char hello_version_major;
 static unsigned char hello_version_minor;
 static unsigned char hello_version_patch;
 static unsigned char hello_build_id[4];
 
-/* Dashboard's own fetch - GET_DASHBOARD FULL entries, drawn as-is at
-   their given position. Valid only when dashboard_ok. */
 unsigned char dashboard_ok;
 
-/* Interface menu's own fetch; scoped to the menu's lifetime. */
 struct netif_state menu_netif;
 
 unsigned char selected_interface;
 
-/* Interface menu's editable settings, shared across Network/IP
-   settings and applied together by do_interface_menu()'s Apply - see
-   struct netif_settings in gui_shared.h. */
 struct netif_settings interface_settings;
 
 static char root_menu_text[] = "PFTC\0Interfaces\0Reconnect\0Info\0Exit\0\0";
@@ -57,10 +50,7 @@ static char edit_backup[65];
 char not_supported_dialog_text[] = "Not supported yet.";
 static char offline_dialog_text[] = "Offline - try Reconnect.";
 
-/* Fetches GET_NETIF for `interface` into `*out`, generic across
-   interface types - see struct netif_state in gui_shared.h. Returns 0
-   on success, non-zero on error (already reported); *out is untouched
-   on failure so a failed refresh keeps old data. */
+/* Does not modify *out on failure. */
 int fetch_netif_state(interface, out)
 unsigned char interface;
 struct netif_state *out;
@@ -118,9 +108,6 @@ struct netif_state *out;
     return 0;
 }
 
-/* Draws one GET_DASHBOARD FULL entry at its given position - no
-   layout/formatting decisions here, the ESP already picked position
-   and content; this is just a dumb writer. */
 static void draw_dashboard_entry(row, col, len, payload)
 unsigned char row;
 unsigned char col;
@@ -132,10 +119,7 @@ unsigned char *payload;
     fflush(stdout);
 }
 
-/* Fetches GET_DASHBOARD (mode=FULL) and draws every entry as received.
-   Returns 0 on success, non-zero on error (already reported);
-   dashboard_ok stays untouched on failure so a failed refresh keeps
-   whatever was last drawn on screen. */
+/* Leaves dashboard_ok unchanged on failure. */
 static int do_fetch_dashboard()
 {
     unsigned int received;
@@ -223,8 +207,6 @@ enum nav_state do_handshake()
     return NAV_DASHBOARD;
 }
 
-/* Never fetches on its own - F5 re-fetches, do_handshake()/Reconnect
-   populate the initial data. */
 enum nav_state do_dashboard()
 {
     int key;
@@ -245,8 +227,6 @@ enum nav_state do_dashboard()
     }
 }
 
-/* ESC -> NAV_DASHBOARD. Interfaces without a fetch yet shows an
-   "Offline" dialog and stays in the menu instead of navigating in. */
 enum nav_state do_root_menu()
 {
     unsigned int bottom_right;
@@ -359,12 +339,7 @@ enum nav_state do_interfaces_list()
     return NAV_INTERFACE_MENU;
 }
 
-/* Fills interface_settings from menu_netif - called once at
-   do_interface_menu() entry, before Network/IP settings can be
-   opened. DHCP/static mode and IPv6 default to off since GET_NETIF's
-   ip_mode/ipv6_enabled fields didn't exist until this wire-format
-   change; once the ESP side reports them for real, read them here
-   instead. */
+/* Defaults for fields not yet supplied by GET_NETIF. */
 void init_interface_settings()
 {
     interface_settings.enabled = menu_netif.info.enabled;
@@ -448,12 +423,7 @@ int apply_netif_settings()
     return 0;
 }
 
-/* Shared body for every "edit a field, validate, retry on bad input,
-   ESC restores the pre-edit value" prompt in Network/IP settings -
-   replaces five near-identical copies of the same loop. validator
-   returns non-zero for an acceptable value; error_text is shown and
-   the same field re-opened (KEEP_ON_ENTRY, so the bad text stays
-   visible) until it passes or the user backs out with ESC. */
+/* ESC restores value; validation retries the same editor. */
 void edit_field_validated(title, value, max, width, validator,
                                  error_text, exit_keys)
 char *title;

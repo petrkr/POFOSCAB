@@ -15,15 +15,7 @@ static char ip_settings_menu_text[SETTINGS_FIELD_MAX * 5 + 32];
 static char invalid_ipv4_dialog_text[] = "Invalid IPv4 address.";
 static char invalid_prefix_dialog_text[] = "Prefix must be 0-32.";
 
-/* Loose check: 4 dot-separated 1-3 digit groups, no numeric range check
-   per octet (so "999.999.999.999" slips through) - parse_ipv4() just
-   takes whatever is there; stricter validation isn't worth it for a
-   field that already passed is_valid_ipv4(). "" doesn't parse as
-   valid either, same as any other bad value. */
-/* Local working copy edited by do_ip_settings() - malloc'd on entry,
-   discarded (free, no write-back) on ESC, written into
-   interface_settings only on Done. Keeps a mid-edit ESC from
-   clobbering interface_settings, which is what Apply actually sends. */
+/* Local copy makes ESC discard all edits from this screen. */
 struct ip_edit {
     unsigned char ip_mode;
     char ip[16];
@@ -32,10 +24,6 @@ struct ip_edit {
     unsigned char ipv6_enabled;
 };
 
-/* Under DHCP, only Mode/IPv6 are shown - no point offering IP/Prefix/
-   Gateway for fields DHCP overwrites anyway. No Apply here - see
-   do_interface_menu()'s Apply, which sends the single shared
-   SET_NETIF for both this screen and Network settings. */
 static void build_ip_settings_text(edit)
 struct ip_edit *edit;
 {
@@ -55,12 +43,6 @@ struct ip_edit *edit;
     *p = 0;
 }
 
-/* Edits a malloc'd local copy of ip_mode/ip/prefix/gateway/
-   ipv6_enabled, seeded from interface_settings - no Apply of its own,
-   see do_interface_menu()'s Apply. ESC frees the copy and returns to
-   Interface menu without touching interface_settings (edits so far
-   just evaporate); Done writes the copy back into interface_settings
-   first. */
 enum nav_state do_ip_settings()
 {
     struct ip_edit *edit;
@@ -122,7 +104,6 @@ enum nav_state do_ip_settings()
         }
 
         if (edit->ip_mode != PFTC_IP_MODE_STATIC) {
-            /* DHCP: only Mode(0)/IPv6(1)/Done(2) are on screen. */
             switch (last_item) {
             case 0:
                 edit->ip_mode = PFTC_IP_MODE_STATIC;

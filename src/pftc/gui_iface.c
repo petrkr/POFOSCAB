@@ -34,20 +34,9 @@ static unsigned char wifiscan_menu_security[WIFISCAN_MENU_MAX_ITEMS];
 
 static char invalid_psk_dialog_text[] = "PSK must be 8-63 chars, or empty.";
 
-/* Set once do_interface_menu() has fetched+initialized for the
-   current selected_interface; cleared on the way back out to
-   Interfaces so the next entry (possibly a different interface)
-   fetches fresh. Without this, every re-entry from Network/IP
-   settings (both return NAV_INTERFACE_MENU) would re-fetch and
-   clobber whatever the user already confirmed via Done into
-   interface_settings. */
+/* Avoids refetching and discarding confirmed edits after a sub-menu. */
 static unsigned char interface_menu_initialized;
 
-/* Fetches selected_interface fresh on first entry only, then shows
-   the Status/Network settings/IP settings/Apply menu - all screens
-   read/edit the same fetch and interface_settings, no further
-   re-fetch until back out to Interfaces and in again (see
-   interface_menu_initialized above). */
 enum nav_state do_interface_menu()
 {
     unsigned int bottom_right;
@@ -134,11 +123,6 @@ static void build_detail_text()
     *p = 0; /* double zero terminator */
 }
 
-/* Reads whatever do_interface_menu() last fetched - no re-fetch of its
-   own. A scrollable menu-as-window (see INT60H.md AH=0Fh depth bits)
-   stands in for a real info window - the ROM has no passive scrolling
-   text primitive. ESC or an item pick both just close it ->
-   NAV_INTERFACE_MENU. */
 enum nav_state do_interface_detail()
 {
     unsigned int bottom_right;
@@ -167,7 +151,6 @@ unsigned char flag;
     return flag ? "Yes" : "No";
 }
 
-/* SSID has no format rule beyond the field's own max length. */
 static int is_valid_always(text)
 char *text;
 {
@@ -185,20 +168,13 @@ char *text;
     return len == 0 || (len >= 8 && len <= 63);
 }
 
-/* Local working copy edited by do_network_settings() - malloc'd on
-   entry, discarded (free, no write-back) on ESC, written into
-   interface_settings only on Done. Keeps a mid-edit ESC from
-   clobbering interface_settings, which is what Apply actually sends. */
+/* Local copy makes ESC discard all edits from this screen. */
 struct net_edit {
     unsigned char enabled;
     char ssid[33];
     char psk[65];
 };
 
-/* When disabled, only Enabled is shown - no point offering Scan/SSID/
-   PSK for a slot that's off. No Apply here - see do_interface_menu()'s
-   Apply, which sends the single shared SET_NETIF for both this screen
-   and IP settings. */
 static void build_network_settings_text(edit)
 struct net_edit *edit;
 {
@@ -216,13 +192,7 @@ struct net_edit *edit;
     *p = 0;
 }
 
-/* Scans on selected_interface, shows results as a menu (title +
-   "SSID (security, RSSI dBm)" per entry), and on a pick copies the
-   SSID into ssid_out and returns the chosen entry's security in
-   *security_out. ESC picks nothing (returns 0, leaves *ssid_out/
-   *security_out untouched). SSID bytes are shown as-is per
-   PFTC_PROTOCOL.md (no filtering) - non-ASCII SSIDs may render as
-   garbled glyphs on the Portfolio's charset, which is expected. */
+/* Returns 1 after copying a selection; 0 leaves both outputs unchanged. */
 static int do_wifi_scan_menu(ssid_out, security_out)
 char *ssid_out;
 unsigned char *security_out;
@@ -318,11 +288,6 @@ unsigned char *security_out;
     return 1;
 }
 
-/* Edits a malloc'd local copy of enabled/ssid/psk, seeded from
-   interface_settings - no Apply of its own, see do_interface_menu()'s
-   Apply. ESC frees the copy and returns to Interface menu without
-   touching interface_settings (edits so far just evaporate); Done
-   writes the copy back into interface_settings first. */
 enum nav_state do_network_settings()
 {
     struct net_edit *edit;
@@ -380,7 +345,6 @@ enum nav_state do_network_settings()
         }
 
         if (!edit->enabled) {
-            /* Disabled: only Enabled(0)/Done(1) are on screen at all. */
             if (last_item == 0)
                 edit->enabled = 1;
             screen_pop();
