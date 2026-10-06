@@ -301,7 +301,7 @@ class TestFileOperations:
 
     def test_delete_nonexistent(self, base_url):
         """DELETE (0x89) - nonexistent file returns not found."""
-        r = send_raw(base_url, req(0x89, "C:\\PYTESTNOTEXIST.TXT"))
+        r = send_raw(base_url, req(0x89, "C:\\NOFILE.TXT"))
         assert r[:2].lower() == "10", f"Expected error status, got {r}"
         assert r[2:4].lower() == "01", f"Expected errcode 1, got {r[2:4]}"
 
@@ -360,7 +360,7 @@ class TestFileTransfer:
 
     def test_copy_nonexistent_source(self, base_url):
         """COPY (0x8C) - nonexistent source returns not found."""
-        r = send_raw(base_url, req(0x8C, "C:\\PYTESTNOTEXIST.TXT", "C:\\PYTEST_DST.TXT"))
+        r = send_raw(base_url, req(0x8C, "C:\\NOFILE.TXT", "C:\\DSTFILE.TXT"))
         assert r[:2].lower() == "10", f"Expected error status, got {r}"
         assert r[2:4].lower() == "01", f"Expected errcode 1, got {r[2:4]}"
 
