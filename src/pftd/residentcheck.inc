@@ -1,7 +1,7 @@
 ; residentcheck.inc - "are we already installed?" probe, so running PFTD
 ; a second time doesn't stack a duplicate int 0x61 hook on top of itself.
 ;
-; This is deliberately NOT built on the same payload[0]/pending mechanism
+; This is deliberately NOT built on the same payload[0] mechanism
 ; as HELLO (hello.inc) - that path only fires after a real ROM receive-
 ; block handshake (AH=0x30 AL=1) and answers over the smart cable, which
 ; needs a client alive on the other end. The installer needs to ask
@@ -9,13 +9,13 @@
 ; the cable, so this uses a private AX subfunction that legitimate ROM
 ; code and the HELLO/transmit path never produce: AX=0x6101. If that
 ; comes back with AX=PROBE_ANSWER, a PFTD hook answered directly out of
-; registers - no ROM call, no cable I/O, no pending/saved_* state touched.
+; registers - no ROM call, no cable I/O, no saved_* state touched.
 ;
 ; PROBE_CMD (0x6101) is chosen from the same "far outside anything the ROM
 ; dispatches" reasoning as HELLO_CMD in hello.inc - AH=0x61 is not a value
 ; the ROM's own AH=0x30 transport ever produces, so it can never collide
-; with a real receive-block handshake landing in the pending/payload0
-; path in PFTD.asm.
+; with a real receive-block handshake landing in the payload0 path in
+; PFTD.asm.
 
 PROBE_CMD    equ 0x6101
 PROBE_ANSWER equ 0x4650        ; 'F','P' - answered directly in AX, no cable I/O

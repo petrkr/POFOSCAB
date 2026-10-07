@@ -54,8 +54,6 @@ list_src_si: resw 1
 ; meaningful on a Portfolio, where drive C: is a RAM disk and an
 ; uninitialized buffer would otherwise be stored twice: once as zero
 ; bytes in the file, once again in resident RAM. Buffers that DO need a
-; specific starting value physically present in the file (e.g.
-; PFTD.asm's `pending db 0`, which pftd_int61_handler trusts as a real
-; zero before any receive-block handshake has happened) must stay in
+; specific starting value physically present in the file must stay in
 ; .text/.data, not .bss - do not move those without checking why they
 ; were initialized in the first place.

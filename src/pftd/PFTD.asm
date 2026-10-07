@@ -7,26 +7,20 @@
 ; see ROM_RESEARCH_NOTES.md). See hello.inc for the command layout and
 ; response format.
 ;
-; Detection mechanism (identical to the one proven working in HOOK3.asm):
-; DOS is single-tasking, so if int 0x61 fires a SECOND time after we saw an
-; AH=0x30 AL=1 (receive block) call, the first call must have already
-; completed. On AL=1 we remember DS:DX (the buffer) and set a flag; on the
-; very next int 0x61 of any kind, we check that flag and peek at the
-; remembered buffer for payload[0].
+; Detection mechanism: the ROM server's receive (AX=0x3001, caller CS
+; >= C000) is run as a subroutine via pushf + call far - the original
+; entry ends in "retf word 0x2", which pops exactly that frame (a plain
+; CALL without pushf would break the stack). On return DL=0 means a block
+; arrived; payload[0] is then read and dispatched once. DL=06 is the ROM
+; idle re-arm with nothing received and is ignored, same as the ROM
+; does. The foreign buffer is never written to. Every other int 0x61
+; call is passed through with JMP far to the original vector.
 ;
-; We NEVER call the original int 0x61 handler as a subroutine (it ends in
-; "retf word 0x2", not "iret" - a naive CALL/return-here breaks the stack).
-; Always inspect-then-JMP far to the original vector.
-;
-; To answer a recognized command before the pending receive-block call
-; returns, dispatch_hello (hello.inc) issues a REAL int 0x61 (AH=0x30
-; AL=0, transmit) from inside our own hook. This re-enters
+; To answer a recognized command, dispatch_* issues a REAL int 0x61
+; (AH=0x30 AL=0, transmit) from inside our own hook. This re-enters
 ; pftd_int61_handler recursively, but AX=0x3000 (not 0x3001) so the
-; recursive instance falls straight through to the chain - it never
-; touches pending/saved_*. This works because the ROM's own receive loop
-; waits forever for the next handshake byte - there is no timeout on its
-; side, so delaying our return costs nothing (see ROM_RESEARCH_NOTES.md,
-; tested on real hardware via HOOK3).
+; recursive instance falls straight through to the chain. Delaying the
+; return to the ROM costs nothing (see ROM_RESEARCH_NOTES.md).
 ;
 ; int 0x21 (DOS API) must never be called from inside pftd_int61_handler -
 ; DOS is not re-entrant and this crashes (observed as garbage-filled
@@ -55,7 +49,6 @@ start:
         jmp     install
 
 old61     dd 0
-pending   db 0        ; 1 = a receive-block buffer is waiting to be inspected
 saved_ds  dw 0
 saved_dx  dw 0
 payload0  db 0        ; captured payload[0] byte, read out safely below
@@ -86,8 +79,9 @@ section .text
 section .text
 
 ; --- new int 0x61 handler ---
-; CPU already pushed FLAGS, CS, IP of the caller. We NEVER call the
-; original as a subroutine - always inspect-then-JMP.
+; CPU already pushed FLAGS, CS, IP of the caller. Everything except the
+; ROM server's own receive is passed straight through with JMP. The ROM
+; receive is run as a subroutine so its result is known immediately.
 pftd_int61_handler:
         ; Must run before anything is pushed: check_already_resident
         ; returns via RET (stack still just has FLAGS/CS/IP from the
@@ -99,46 +93,55 @@ pftd_int61_handler:
         jne     .not_probe
         iret
 .not_probe:
+        cmp     ax, 0x3001
+        jne     .chain
+
+        ; Only the ROM server's receive carries commands for us. A
+        ; foreground client (CS in RAM) receiving its own response must
+        ; pass through untouched. Measured: ROM server CS=C87A, BCC
+        ; client CS=0592. Known limitation: a client executing from
+        ; ROM/card memory >= C000 would be treated as the server.
+        push    bp
+        mov     bp, sp
+        cmp     word [bp+4], 0xC000     ; caller CS: +0 BP, +2 IP, +4 CS
+        pop     bp
+        jb      .chain
+
+        mov     [cs:saved_ds], ds
+        mov     [cs:saved_dx], dx
+
+        ; ROM entry exits with `retf 2`, so pushf+call far emulates INT.
+        pushf
+        call    far [cs:old61]
+        pushf
+
+        ; DL=0: a block was received. The ROM idle loop re-arms
+        ; periodically and gets DL=06 (nothing arrived) - the ROM itself
+        ; ignores the buffer then, and so do we. Each received block is
+        ; therefore dispatched exactly once, and the buffer is never
+        ; written to: the ROM still reads it afterwards (e.g. the
+        ; download finish ack), so it must stay intact.
+        or      dl, dl
+        jnz     .done
 
         push    ax
         push    bx
+        push    cx
+        push    dx
         push    si
+        push    di
         push    ds
+        push    es
 
-        cmp     byte [cs:pending], 0
-        je      .no_pending
-        mov     byte [cs:pending], 0    ; consume the flag either way
-
-        ; read payload[0] from the foreign buffer, DS temporarily switched
-        mov     ax, [cs:saved_ds]
-        mov     ds, ax
+        mov     ds, [cs:saved_ds]
         mov     si, [cs:saved_dx]
         mov     al, [si]
-        ; Consume the byte in the foreign buffer itself, not just our
-        ; own pending/payload0 copy of it: the ROM's own idle loop
-        ; re-arms its receive slot (int 0x61 AX=0x3001) periodically
-        ; without a new byte from any client, which otherwise makes
-        ; this handler re-read and re-dispatch the SAME stale command
-        ; byte on every re-arm (confirmed on real hardware and in
-        ; MAME - see project memory "pftd screen log idea"). 0x00
-        ; matches none of this driver's command bytes ([2,6] is the
-        ; ROM's own range, [0x80,0x8E] is ours) or the ROM's, so a
-        ; stale re-read after this is a harmless no-op instead of a
-        ; repeat dispatch. Safe to do: this buffer's only reader after
-        ; the real handshake completes is this same payload[0] check,
-        ; on the ROM's own next idle re-arm.
-        mov     byte [si], 0
         push    cs
-        pop     ds                      ; DS=CS again immediately, nothing
-                                         ; below this line ever uses the
-                                         ; foreign segment again
+        pop     ds
         mov     [cs:payload0], al
 
-        ; stash the same DS:DX pair for dispatch_list, which (unlike
-        ; dispatch_hello) needs more than just payload[0] out of the
-        ; foreign buffer - see list.inc. This clobbers AX/AL, so AL
-        ; (payload[0]) is reloaded from payload0 below before either
-        ; dispatcher runs - both require AL = payload[0] on entry.
+        ; dispatch_* needing more than payload[0] read the foreign buffer
+        ; via list_src_ds:list_src_si (see common.inc)
         mov     ax, [cs:saved_ds]
         mov     [cs:list_src_ds], ax
         mov     ax, [cs:saved_dx]
@@ -167,30 +170,17 @@ pftd_int61_handler:
         mov     al, [cs:payload0]
         call    dispatch_draw_ascii
 
-.no_pending:
+        pop     es
         pop     ds
+        pop     di
         pop     si
+        pop     dx
+        pop     cx
         pop     bx
         pop     ax
-
-        cmp     ax, 0x3001
-        jne     .chain
-
-        ; Only the ROM server's own receive buffer is ours to inspect and
-        ; zero. A foreground client (CS in RAM) arming 0x3001 for its own
-        ; response must be left alone, or its response byte 0 gets eaten.
-        ; Measured: ROM server CS=C87A, BCC client CS=0592. Known
-        ; limitation: a client executing from ROM/card memory >= C000
-        ; would still be treated as the server.
-        push    bp
-        mov     bp, sp
-        cmp     word [bp+4], 0xC000     ; caller CS: +0 BP, +2 IP, +4 CS
-        pop     bp
-        jb      .chain
-
-        mov     [cs:saved_ds], ds
-        mov     [cs:saved_dx], dx
-        mov     byte [cs:pending], 1
+.done:
+        popf
+        retf    2
 
 .chain:
         jmp     far [cs:old61]
