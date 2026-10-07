@@ -102,7 +102,7 @@ def upload_file(base_url: str, path: str, data: bytes) -> bool:
     """
     dest_dir, _, filename = path.rpartition("\\")
     body, boundary = _multipart_body(filename, data)
-    url = f"{base_url}/upload?{urllib.parse.urlencode({'destDir': dest_dir + '\\\\'})}"
+    url = f"{base_url}/upload?{urllib.parse.urlencode({'destDir': dest_dir + '\\'})}"
     req_obj = urllib.request.Request(url, data=body, method="POST")
     req_obj.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
     with urllib.request.urlopen(req_obj, timeout=30) as resp:
