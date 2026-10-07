@@ -89,6 +89,8 @@ def unique_path(drive: str, suffix: str = "") -> str:
 
 def remove_path(base_url: str, path: str, command: int) -> None:
     """Best-effort cleanup for an artifact created by the current test."""
+    if os.getenv("SKIP_CLEANUP") == "1":
+        return
     try:
         send_raw(base_url, req(command, path))
     except Exception:
@@ -181,6 +183,8 @@ def require_pftd(request, setup_tests, cfg):
     PFTD) via the no_pftd_required marker.
     """
     if request.node.get_closest_marker("no_pftd_required"):
+        return
+    if os.getenv("SKIP_PFTD_CHECK") == "1":
         return
     try:
         with urllib.request.urlopen(f"{cfg.BRIDGE_URL}/status", timeout=2) as resp:
