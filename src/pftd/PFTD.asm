@@ -176,6 +176,18 @@ pftd_int61_handler:
         cmp     ax, 0x3001
         jne     .chain
 
+        ; Only the ROM server's own receive buffer is ours to inspect and
+        ; zero. A foreground client (CS in RAM) arming 0x3001 for its own
+        ; response must be left alone, or its response byte 0 gets eaten.
+        ; Measured: ROM server CS=C87A, BCC client CS=0592. Known
+        ; limitation: a client executing from ROM/card memory >= C000
+        ; would still be treated as the server.
+        push    bp
+        mov     bp, sp
+        cmp     word [bp+4], 0xC000     ; caller CS: +0 BP, +2 IP, +4 CS
+        pop     bp
+        jb      .chain
+
         mov     [cs:saved_ds], ds
         mov     [cs:saved_dx], dx
         mov     byte [cs:pending], 1
