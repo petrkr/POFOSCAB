@@ -18,9 +18,9 @@
 ; directly over the wire by whoever is testing, not a client-facing
 ; command with untrusted input.
 ;
-; No response - fire-and-forget, matching how HELLO's own screen-write
-; side effect works (no protocol change, purely a local side effect of
-; processing a request that already arrived over the wire).
+; Response layout (fixed 2 bytes): status(1B)=0x20, errcode(1B)=0 -
+; always "ok", same convention as mkdir.inc/delete.inc's status byte but
+; with no error path, since this is a debug tool with no validation.
 
 DRAW_ASCII_CMD equ 0x8F
 
@@ -72,6 +72,13 @@ dispatch_draw_ascii:
         mov     si, draw_ascii_text
         call    gui_print
 
+        mov     byte [draw_ascii_response], 0x20
+        mov     byte [draw_ascii_response+1], 0
+        mov     dx, draw_ascii_response
+        mov     cx, 2
+        mov     ax, 0x3000      ; AH=0x30 AL=0 = transmit block
+        int     0x61
+
         pop     ds
         pop     es
         pop     di
@@ -89,5 +96,6 @@ draw_ascii_row:  resb 1
 draw_ascii_col:  resb 1
 draw_ascii_text: resb 80        ; same 80-byte convention as other
                                  ; ASCIIZ buffers in this driver
+draw_ascii_response: resb 2     ; status(1B) + errcode(1B), always 0x20/0
 
 section .text
