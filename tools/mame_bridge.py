@@ -59,7 +59,14 @@ def parse_multipart_file(content_type: str, body: bytes) -> tuple[str, bytes] | 
     boundary = b"--" + match.group(1).encode()
 
     for part in body.split(boundary)[1:-1]:
-        part = part.strip(b"\r\n")
+        # Each multipart part is framed by one CRLF after its boundary
+        # and one CRLF before the next boundary.  Remove only those two
+        # framing sequences: strip(b"\r\n") would also corrupt a file
+        # whose actual contents end in CR and/or LF.
+        if part.startswith(b"\r\n"):
+            part = part[2:]
+        if part.endswith(b"\r\n"):
+            part = part[:-2]
         if not part:
             continue
         header_blob, _, data = part.partition(b"\r\n\r\n")
