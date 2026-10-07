@@ -1,20 +1,14 @@
 """PFTD integration tests via smartcable bridge.
 
-Tests run against the /sendRaw API,
-allowing runs against either MAME (via smartcable device) or real Portfolio
-hardware (ESP32 Smart Cable client).
+Tests run against the /sendRaw API. The bridge (and whatever it's talking
+to - MAME or real Portfolio hardware) must already be running; pytest
+never starts or builds anything, it only points at POFOSCAB_BRIDGE_URL.
 
 Usage:
   pytest tests/test_integration.py -v
 
-  # Skip upload step (PFTD already on card)
-  SKIP_UPLOAD=1 pytest tests/test_integration.py -v
-
-  # Manual MAME UI mode (start mame manually first)
-  POFOSCAB_BACKEND=mame_manual pytest tests/test_integration.py -v
-
-  # Real hardware
-  POFOSCAB_BACKEND=hardware POFOSCAB_BRIDGE_URL=http://10.220.179.55 pytest tests/test_integration.py -v
+  # Point at a different bridge
+  POFOSCAB_BRIDGE_URL=http://10.220.179.55:9000 pytest tests/test_integration.py -v
 """
 
 import json
@@ -23,7 +17,7 @@ import uuid
 import urllib.request
 import urllib.parse
 import pytest
-from conftest import config, wait_for_http, wait_for_socket
+from conftest import config, wait_for_http
 
 
 def _multipart_body(filename: str, data: bytes) -> tuple[bytes, str]:
@@ -135,23 +129,22 @@ def pack_time(hour: int, minute: int, second: int) -> int:
 # ============================================================================
 
 @pytest.fixture(scope="module", autouse=True)
-def setup_tests(cfg, build_pftd, bridge_process):
-    """Setup all tests: ensure bridge is ready and Portfolio is connected.
+def setup_tests(cfg):
+    """Ensure the bridge is reachable and the Portfolio link is up.
 
     Only waits for the Portfolio link itself (/status "connected") - does
     NOT gate on PFTD being present, so test_status (the one test that
     only checks the raw link) can still run and report a clear result
     when PFTD isn't up. PFTD-dependent tests are gated separately by the
-    require_pftd fixture below.
+    require_pftd fixture below. Does not build, upload, or start anything -
+    that's all external setup.
     """
     if not wait_for_http(cfg.BRIDGE_URL, timeout=10):
         pytest.fail(
             f"Bridge not available at {cfg.BRIDGE_URL}. "
-            f"Backend: {cfg.BACKEND}. "
-            f"If manual mode, start MAME and bridge first."
+            f"Start the bridge (and MAME/hardware) before running pytest."
         )
 
-    # Wait for Portfolio to be connected (Lua script runs fileserver).
     import time
     start = time.time()
     while time.time() - start < 15:
@@ -159,17 +152,14 @@ def setup_tests(cfg, build_pftd, bridge_process):
             with urllib.request.urlopen(f"{cfg.BRIDGE_URL}/status", timeout=2) as resp:
                 st = json.loads(resp.read().decode())
             if st.get("connected"):
-                # Portfolio is connected; optionally upload PFTD if needed
-                if not cfg.SKIP_UPLOAD and cfg.BACKEND != 'hardware':
-                    _do_upload_pftd(cfg)
                 return  # Ready!
         except Exception:
             pass
         time.sleep(0.5)
 
     pytest.fail(
-        f"Portfolio not connected after 15s. "
-        f"Check MAME window - fileserver may not have started."
+        f"Portfolio not connected after 15s at {cfg.BRIDGE_URL}. "
+        f"Check that MAME/hardware and the fileserver are running."
     )
 
 
@@ -193,34 +183,6 @@ def require_pftd(request, setup_tests, cfg):
         pytest.fail(f"Could not reach {cfg.BRIDGE_URL}/status: {exc}")
     if not st.get("pftd"):
         pytest.skip("PFTD not detected on the Portfolio - skipping PFTD-dependent test")
-
-
-def _do_upload_pftd(cfg):
-    """Helper to upload PFTD.COM if needed."""
-    import urllib.request
-    import urllib.parse
-
-    pftd_path = os.path.join(cfg.PROJECT_ROOT, 'build', 'PFTD.COM')
-    if not os.path.exists(pftd_path):
-        pytest.fail(f"PFTD.COM not found at {pftd_path}")
-
-    with open(pftd_path, 'rb') as f:
-        pftd_data = f.read()
-
-    try:
-        body, boundary = _multipart_body("PFTD.COM", pftd_data)
-        req = urllib.request.Request(
-            f"{cfg.BRIDGE_URL}/upload?" + urllib.parse.urlencode({"destDir": "C:\\"}),
-            data=body,
-            method="POST"
-        )
-        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            result = json.loads(resp.read().decode())
-        if not result.get("ok"):
-            pytest.fail(f"Upload failed: {result}")
-    except Exception as e:
-        pytest.fail(f"Upload error: {e}")
 
 
 @pytest.fixture(scope="module")

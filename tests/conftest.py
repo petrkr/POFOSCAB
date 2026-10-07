@@ -1,9 +1,12 @@
-"""Pytest configuration and fixtures for POFOSCAB tests."""
+"""Pytest configuration and fixtures for POFOSCAB tests.
+
+Pytest only ever talks to an already-running bridge at POFOSCAB_BRIDGE_URL.
+It never starts MAME, the bridge process, or builds/uploads PFTD.COM -
+that's all external setup the user does before running pytest.
+"""
 
 import os
-import subprocess
 import time
-import socket
 import json
 import pytest
 
@@ -15,39 +18,16 @@ import pytest
 class TestConfig:
     """Test configuration from environment variables."""
 
-    # Backend: 'mame_auto' (headless), 'mame_manual' (UI), 'hardware'
-    BACKEND = os.getenv('POFOSCAB_BACKEND', 'mame_auto')
-
-    # Steps to skip/run
-    SKIP_BUILD = os.getenv('SKIP_BUILD', '0') == '1'
-    SKIP_UPLOAD = os.getenv('SKIP_UPLOAD', '0') == '1'
-    SKIP_ESCAPE = os.getenv('SKIP_ESCAPE', '0') == '1'
-
-    # Paths
     PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    MAME_PATH = os.getenv('MAME_PATH', '/home/petrkr/git/mame')
-    MAME_BIN = os.path.join(MAME_PATH, 'pofo')
-
-    # URLs and ports
     BRIDGE_URL = os.getenv('POFOSCAB_BRIDGE_URL', 'http://localhost:9000')
-    BRIDGE_PORT = int(os.getenv('POFOSCAB_BRIDGE_PORT', '9000'))
-    SMARTCABLE_PORT = 9997  # Fixed: smartcable device TCP port in MAME
+
+    # Path to a FIFO feeding an externally-started `mame ... -console`
+    # process's stdin. Set by whatever step/user started MAME - pytest
+    # never starts MAME itself, only writes Lua commands into this pipe.
+    MAME_FIFO = os.getenv('POFOSCAB_MAME_FIFO')
 
 
 config = TestConfig()
-
-
-def wait_for_socket(host: str, port: int, timeout: int = 30) -> bool:
-    """Wait for a TCP socket to be available."""
-    start = time.time()
-    while time.time() - start < timeout:
-        try:
-            sock = socket.create_connection((host, port), timeout=1)
-            sock.close()
-            return True
-        except (ConnectionRefusedError, socket.timeout):
-            time.sleep(0.1)
-    return False
 
 
 def wait_for_http(url: str, timeout: int = 30) -> bool:
@@ -73,131 +53,73 @@ def cfg():
     return config
 
 
-@pytest.fixture(scope="session")
-def mame_process(cfg):
-    """Start MAME emulator (session-scoped)."""
-    if cfg.BACKEND == 'mame_manual':
-        return None  # User runs MAME manually
+class MameCtl:
+    """Writes Lua commands into an externally-started `mame -console`
+    process's stdin FIFO. Fire-and-forget - callers verify effects via
+    the bridge's /status endpoint, not via any response read back here.
 
-    if cfg.BACKEND == 'hardware':
-        return None  # Real hardware, no MAME
+    Keeps a single long-lived file descriptor open for the FIFO rather
+    than opening/closing per command: MAME's -console reads stdin as one
+    continuous stream for the life of the process, and a FIFO writer
+    that closes after each write sends EOF to that reader - the next
+    open() then blocks forever with no reader left to pair with
+    (confirmed: a `cat fifo &` reader exits after the first writer
+    closes, so a second writer's open() hangs).
+    """
 
-    if cfg.BACKEND != 'mame_auto':
-        pytest.fail(f"Unknown backend: {cfg.BACKEND}")
-
-    # mame_auto: start MAME with smartcable and autoboot script
-    lua_script = os.path.join(cfg.PROJECT_ROOT, 'tests', 'lua', 'flow_build_upload_pftd.lua')
-
-    proc = subprocess.Popen(
-        [
-            cfg.MAME_BIN, 'pofo',
-            '-ccma', 'ram',
-            '-exp', 'smartcable',
-            '-autoboot_script', lua_script,
-            '-seconds_to_run', '300',
-            '-skip_gameinfo',
-            '-window', '-nomax'
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
+    HELPERS_LUA = os.path.join(
+        TestConfig.PROJECT_ROOT, 'tests', 'lua', 'helpers.lua'
     )
 
-    # Wait for smartcable TCP socket to be ready
-    # In GUI mode, MAME may take longer to initialize
-    if not wait_for_socket('localhost', cfg.SMARTCABLE_PORT, timeout=60):
-        pytest.fail(
-            f"MAME smartcable device not ready after 60s. "
-            f"Check that MAME window opened and Lua script ran."
+    def __init__(self, fifo_path: str):
+        self._fifo_path = fifo_path
+        self._loaded_helpers = False
+        self._fh = open(fifo_path, 'w')
+
+    def close(self) -> None:
+        self._fh.close()
+
+    def send_lua(self, code: str) -> None:
+        """Write a Lua statement to the MAME console FIFO."""
+        self._fh.write(code.rstrip('\n') + '\n')
+        self._fh.flush()
+
+    def _send_helper(self, call: str) -> None:
+        if not self._loaded_helpers:
+            self.send_lua(f'h = dofile("{self.HELPERS_LUA}")')
+            self._loaded_helpers = True
+        self.send_lua(call)
+
+    def run_fileserver(self) -> None:
+        self._send_helper('h.run_fileserver()')
+
+    def exit_fileserver(self) -> None:
+        self._send_helper('h.exit_fileserver()')
+
+    def run_pftd(self) -> None:
+        self._send_helper('h.run_pftd()')
+
+    def soft_reboot(self) -> None:
+        self._send_helper('h.soft_reboot()')
+        self._loaded_helpers = False  # soft reset re-runs from a clean Lua state
+
+    def shutdown(self) -> None:
+        self._send_helper('h.shutdown()')
+
+
+@pytest.fixture(scope="session")
+def mame_ctl(cfg):
+    """Provide MAME console control, if POFOSCAB_MAME_FIFO is set.
+
+    Skips any test that requests this fixture when the FIFO isn't
+    configured, instead of failing - e.g. on the hardware backend,
+    where there's no MAME to control.
+    """
+    if not cfg.MAME_FIFO:
+        pytest.skip(
+            "POFOSCAB_MAME_FIFO not set - no externally-started MAME "
+            "console to control"
         )
-
-    yield proc
-
-    # Cleanup: terminate MAME
-    proc.terminate()
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
-
-
-@pytest.fixture(scope="session")
-def bridge_process(cfg):
-    """Start Python bridge to smartcable (session-scoped)."""
-    if cfg.BACKEND == 'mame_manual':
-        # User runs bridge manually; don't start it here
-        yield None
-        return
-
-    if cfg.BACKEND == 'hardware':
-        # Real hardware: no bridge process
-        yield None
-        return
-
-    if cfg.BACKEND != 'mame_auto':
-        yield None
-        return
-
-    # mame_auto: start Python bridge on configured port
-    bridge_script = os.path.join(cfg.PROJECT_ROOT, 'tools', 'mame_bridge.py')
-
-    proc = subprocess.Popen(
-        [
-            'python3', bridge_script,
-            '--http-port', str(cfg.BRIDGE_PORT),
-            '--mame-port', str(cfg.SMARTCABLE_PORT)
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
-
-    # Wait for bridge HTTP server to be ready
-    bridge_url = cfg.BRIDGE_URL
-    if not wait_for_http(bridge_url, timeout=10):
-        proc.terminate()
-        pytest.fail(f"Bridge not ready at {bridge_url} after 10s")
-
-    yield proc
-
-    # Cleanup: terminate bridge
-    proc.terminate()
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
-
-
-@pytest.fixture(scope="session", autouse=True)
-def build_pftd(cfg):
-    """Build PFTD.COM (runs for MAME backends unless SKIP_BUILD=1)."""
-    # Only build for MAME backends, not for hardware
-    if cfg.BACKEND == 'hardware':
-        return None
-
-    if cfg.SKIP_BUILD:
-        return None
-
-    result = subprocess.run(
-        ['make', 'pftd'],
-        cwd=cfg.PROJECT_ROOT,
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        pytest.fail(f"Build failed:\n{result.stderr}")
-
-    pftd_path = os.path.join(cfg.PROJECT_ROOT, 'build', 'PFTD.COM')
-    assert os.path.exists(pftd_path), f"PFTD.COM not found at {pftd_path}"
-    return pftd_path
-
-
-@pytest.fixture(scope="session")
-def escape_to_pftd_step(cfg):
-    """Exit fileserver, run PFTD, restart fileserver (if SKIP_ESCAPE not set)."""
-    if cfg.SKIP_ESCAPE:
-        return None
-
-    pytest.skip("escape not yet implemented")
-    # TODO: implement escape sequence
+    ctl = MameCtl(cfg.MAME_FIFO)
+    yield ctl
+    ctl.close()

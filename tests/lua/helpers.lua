@@ -131,6 +131,13 @@ local function soft_reboot()
   emu.print_info("helpers.soft_reboot: soft reset issued")
 end
 
+-- Cleanly stops the MAME process. Used to end an externally-started
+-- -console session once a test run is done with it.
+local function shutdown()
+  emu.print_info("helpers.shutdown: exiting MAME")
+  manager.machine:exit()
+end
+
 return {
   find_field = find_field,
   tap = tap,
@@ -138,4 +145,5 @@ return {
   run_fileserver = run_fileserver,
   exit_fileserver = exit_fileserver,
   soft_reboot = soft_reboot,
+  shutdown = shutdown,
 }

@@ -1,85 +1,50 @@
 # POFOSCAB Tests
 
-Tests are organized as pytest fixtures with configurable backends. See the root
-[README.md](../README.md) for complete instructions.
+Pytest talks only to an already-running bridge over HTTP (`POFOSCAB_BRIDGE_URL`).
+It never starts MAME, starts the bridge process, or builds/uploads PFTD.COM -
+all of that is external setup you do before invoking pytest.
 
 ## Quick start
 
-### Headless MAME (automatic, default)
+1. Start MAME (or connect real hardware) and the Python bridge yourself.
+2. Make sure PFTD.COM is already on the Portfolio if you need PFTD-dependent
+   tests (tests that don't need it, like `test_status`, run regardless).
+3. Run:
+
 ```bash
 pytest -v
 ```
 
-This will:
-1. Build PFTD.COM (root `make pftd`)
-2. Start MAME with smartcable expansion + autoboot script
-3. Start Python bridge
-4. Upload PFTD.COM to Portfolio
-5. Run 16+ tests against the Portfolio
-
-### Skip specific steps
-
+Point at a non-default bridge:
 ```bash
-# Skip build (binary already exists)
-SKIP_BUILD=1 pytest -v
-
-# Skip upload (PFTD already on card)
-SKIP_UPLOAD=1 pytest -v
-
-# Skip both
-SKIP_BUILD=1 SKIP_UPLOAD=1 pytest -v
-```
-
-### Manual MAME UI mode
-
-Start MAME and bridge in separate terminals, then run:
-```bash
-POFOSCAB_BACKEND=mame_manual pytest -v
-```
-
-Terminal 1 (MAME):
-```bash
-cd /home/petrkr/git/mame
-./mame pofo -ccma ram -exp smartcable \
-  -autoboot_script /home/petrkr/git/POFOSCAB/tests/lua/flow_build_upload_pftd.lua \
-  -seconds_to_run 300 -skip_gameinfo
-```
-
-Terminal 2 (bridge):
-```bash
-python3 tests/mame_bridge.py
-```
-
-Terminal 3 (tests):
-```bash
-POFOSCAB_BACKEND=mame_manual pytest -v
-```
-
-### Real hardware
-
-Replace MAME with real Portfolio + ESP32 Smart Cable:
-```bash
-POFOSCAB_BACKEND=hardware POFOSCAB_BRIDGE_URL=http://10.220.179.55 pytest -v
+POFOSCAB_BRIDGE_URL=http://10.220.179.55:9000 pytest -v
 ```
 
 ## Environment variables
 
-- `POFOSCAB_BACKEND` - Backend mode: `mame_auto` (default), `mame_manual`, `hardware`
 - `POFOSCAB_BRIDGE_URL` - Bridge base URL (default: `http://localhost:9000`)
-- `POFOSCAB_BRIDGE_PORT` - Bridge HTTP port (default: 9000)
-- `SKIP_BUILD` - Set to 1 to skip build step
-- `SKIP_UPLOAD` - Set to 1 to skip PFTD upload
-- `SKIP_ESCAPE` - Set to 1 to skip escape sequence (not yet implemented)
-- `MAME_BIN` - Path to MAME binary (default: `mame` in PATH)
-- `MAME_PATH` - Path to MAME repository (default: `/home/petrkr/git/mame`)
+- `SKIP_PFTD_CHECK` - Set to 1 to force PFTD-dependent tests to run even if
+  `/status` doesn't report PFTD (useful when debugging the check itself)
+- `SKIP_CLEANUP` - Set to 1 to skip best-effort cleanup of test artifacts
+
+## PFTD not running
+
+If `/status` doesn't report PFTD as present, PFTD-dependent tests are
+skipped automatically (`require_pftd` fixture in `test_integration.py`) -
+their cleanup can't run without PFTD either, so skipping is correct, not
+just "best effort". Only `test_status` (marked `no_pftd_required`) runs
+without PFTD.
 
 ## Files
 
-- `conftest.py` - Pytest configuration and fixtures
+- `conftest.py` - Pytest configuration and fixtures (bridge URL only)
 - `pytest.ini` - Pytest settings
 - `test_integration.py` - All test cases (HELLO, MKDIR, COPY, etc.)
-- `mame_bridge.py` - Python bridge to smartcable device
-- `lua/` - Lua autoboot scripts for MAME
+- `test_bridge_link.py` - Unit tests for the bridge's link/reconnect logic
+  (no MAME/bridge/hardware needed - uses a fake TCP listener)
+- `lua/` - Lua autoboot scripts for MAME (used when you set up MAME yourself)
+- `../tools/mame_bridge.py` - Python bridge to the smartcable device (start
+  this yourself before running pytest)
 
 ## Test structure
 
@@ -90,4 +55,5 @@ Tests are organized by functionality:
 - `TestDateTime` - GETDATETIME, SETDATETIME
 
 All tests use the same `/sendRaw` HTTP API, so they work identically against
-MAME (via smartcable device) or real Portfolio hardware (ESP32 client).
+MAME (via smartcable device) or real Portfolio hardware (ESP32 client) -
+pytest doesn't know or care which one is behind the bridge.
