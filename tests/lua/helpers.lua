@@ -101,6 +101,25 @@ local function run_pftd()
   emu.print_info("helpers.run_pftd: PFTD started")
 end
 
+-- "format a:" <enter>, <enter> (dismiss insert-diskette prompt), wait
+-- ~2s, "N" <enter> (decline formatting another disk).
+local function format_a()
+  local nk = manager.machine.natkeyboard
+  local function post_line(text)
+    nk:post(text .. "\n")
+    while nk.is_posting do
+      emu.wait(0.05)
+    end
+  end
+
+  post_line("format a:")
+  post_line("")
+  emu.wait(2)
+  post_line("N")
+
+  emu.print_info("helpers.format_a: FORMAT A: sequence complete")
+end
+
 -- Atari+S (System Setup) -> 5x Down, Enter (File transfer) -> 2x Down,
 -- Enter (Server) - drives the ROM's File Transfer Server into "Waiting
 -- for connection" state.
@@ -218,6 +237,7 @@ return {
   tap = tap,
   run_initial = run_initial,
   run_pftd = run_pftd,
+  format_a = format_a,
   run_fileserver = run_fileserver,
   exit_fileserver = exit_fileserver,
   soft_reboot = soft_reboot,

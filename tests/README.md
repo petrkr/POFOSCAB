@@ -95,13 +95,16 @@ is explicitly requested via env vars, each defaulting to "already
 done":
 
 ```bash
-INITIAL=1 UPLOAD=1 SERVER=1 PFTD=1 \
+INITIAL=1 FORMAT_A=1 UPLOAD=1 SERVER=1 PFTD=1 \
 MAME_DIR=/tmp/fifodir \
 POFOSCAB_BRIDGE_URL=http://localhost:9000 pytest -v
 ```
 
 - `INITIAL=1` - run the first-boot Language/Date/Time wizard (only
   valid against clean NVRAM)
+- `FORMAT_A=1` - format the A: memory card (needed once on a clean
+  environment - an unformatted card fails any write with errcode 1,
+  see test_pftd.py's test_copy_cross_drive)
 - `UPLOAD=1` - upload `build/PFTD.COM` via the bridge's `/upload`
   endpoint (pytest never builds it - build it first)
 - `SERVER=1` - drive the ROM into File Transfer Server mode

@@ -38,6 +38,7 @@ class TestConfig:
     # needs no env vars at all. CI explicitly sets "1" on whichever steps
     # it needs done from scratch.
     INITIAL = os.getenv('INITIAL', '0') == '1'
+    FORMAT_A = os.getenv('FORMAT_A', '0') == '1'
     UPLOAD = os.getenv('UPLOAD', '0') == '1'
     SERVER = os.getenv('SERVER', '0') == '1'
     PFTD = os.getenv('PFTD', '0') == '1'
@@ -220,6 +221,9 @@ class MameCtl:
             self._loaded_helpers = True
         return self.send_lua_result(expr)
 
+    def format_a(self) -> None:
+        self._send_helper('h.format_a()')
+
     def run_fileserver(self) -> None:
         self._send_helper('h.run_fileserver()')
 
@@ -330,10 +334,16 @@ def _upload_pftd(bridge_url: str) -> None:
 @pytest.fixture(scope="session")
 def mame_setup(cfg, mame_ctl):
     """Bring an externally-started MAME console up to the state tests
-    expect, driven by INITIAL/UPLOAD/SERVER/PFTD - each defaults to "0"
-    (already done, see TestConfig), so a manual run against a MAME
-    that's already past the wizard with PFTD uploaded and running needs
-    no env vars at all and this is a no-op.
+    expect, driven by INITIAL/FORMAT_A/UPLOAD/SERVER/PFTD - each
+    defaults to "0" (already done, see TestConfig), so a manual run
+    against a MAME that's already past the wizard with PFTD uploaded
+    and running needs no env vars at all and this is a no-op.
+
+    FORMAT_A=1 formats the A: memory card (needed once on a clean
+    MAME environment - its ccma_ram image starts out unformatted,
+    which fails any write to A: with errcode 1, not a code bug - see
+    test_pftd.py's test_copy_cross_drive). Runs right after the
+    INITIAL/settle step, before anything that writes to A:.
 
     Two distinct paths:
 
@@ -364,6 +374,9 @@ def mame_setup(cfg, mame_ctl):
         # missed/mis-timed (observed: run_fileserver's Atari+S landing
         # as plain "S").
         mame_ctl.settle()
+
+    if cfg.FORMAT_A:
+        mame_ctl.format_a()
 
     if cfg.UPLOAD:
         mame_ctl.run_fileserver()
