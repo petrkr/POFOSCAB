@@ -91,38 +91,34 @@ nasm -f bin -i . PFTD.asm -o ../../build/PFTD.COM
 
 ## Testing
 
-Tests run against the Smart Cable bridge API, supporting multiple backends:
+Pytest only ever talks to an already-running Smart Cable bridge over HTTP.
+It never starts MAME, starts the bridge, or builds/uploads PFTD.COM - you
+set all of that up yourself first, same steps whether it's MAME or real
+hardware behind the bridge.
 
 ### Prerequisites
 
-- MAME build with smartcable support (local: `/home/petrkr/git/mame`)
 - Python 3 with pytest: `pip install pytest` (in a venv, not system-wide)
-- For MAME backend: `~/.mame/nvram/pofo/ccma_ram` - FAT12 memory card with PFTD.COM
+- A running bridge (`tests/mame_bridge.py`) connected to either:
+  - MAME with smartcable support (local: `/home/petrkr/git/mame`), or
+  - real Portfolio hardware over an ESP32 Smart Cable
+- PFTD.COM already built and uploaded onto the Portfolio, if you want to
+  run PFTD-dependent tests (see `make pftd` above and `AGENTS.md` for the
+  upload command)
 
 ### Running tests
 
 ```bash
-# Headless MAME with automatic upload (default)
+# Default: bridge on http://localhost:9000
 pytest tests/ -v
 
-# Skip upload step (PFTD already on card)
-SKIP_UPLOAD=1 pytest tests/ -v
-
-# Skip build step (binary already built)
-SKIP_BUILD=1 pytest tests/ -v
-
-# Manual MAME UI mode (start MAME and bridge in separate terminals first)
-POFOSCAB_BACKEND=mame_manual pytest tests/ -v
-
-# Real hardware (Portfolio over ESP32 Smart Cable)
-POFOSCAB_BACKEND=hardware POFOSCAB_BRIDGE_URL=http://10.220.179.55 pytest tests/ -v
+# Point at a different bridge (e.g. one fronting real hardware)
+POFOSCAB_BRIDGE_URL=http://10.220.179.55:9000 pytest tests/ -v
 ```
 
-### Backend modes
-
-- **`mame_auto`** (default): Starts MAME and Python bridge automatically
-- **`mame_manual`**: Assumes MAME and bridge already running (start manually)
-- **`hardware`**: Targets real Portfolio over Smart Cable (ESP32 client)
+If PFTD isn't detected on the Portfolio, PFTD-dependent tests are skipped
+automatically; tests that only need the raw link (e.g. `test_status`)
+still run. See `tests/README.md` for details.
 
 ## CI / Releases
 
