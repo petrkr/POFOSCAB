@@ -1,0 +1,50 @@
+name: Build MAME (pofo)
+
+on:
+  push:
+    branches: [citest]
+
+jobs:
+  build-mame:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout MAME fork
+        uses: actions/checkout@v4
+        with:
+          repository: petrkr/mame-pofo
+          ref: pofosmartcable
+          path: mame
+
+      - name: Get MAME fork SHA
+        id: mame-sha
+        working-directory: mame
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pofo binary
+        id: cache-pofo
+        uses: actions/cache@v4
+        with:
+          path: mame/pofo
+          key: mame-pofo-bin-${{ steps.mame-sha.outputs.sha }}
+
+      - name: Install runtime deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-2.0-0 libsdl2-ttf-2.0-0 libfontconfig1 libpulse0 libqt6core6 libqt6gui6 libqt6widgets6 libqt6dbus6
+
+      - name: Install build deps
+        if: steps.cache-pofo.outputs.cache-hit != 'true'
+        run: sudo apt-get install -y git build-essential python3 libsdl2-dev libsdl2-ttf-dev libfontconfig-dev libpulse-dev qt6-base-dev qt6-base-dev-tools qtchooser
+
+      - name: Setup ccache
+        if: steps.cache-pofo.outputs.cache-hit != 'true'
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: mame-pofo
+
+      - name: Build MAME (pofo subtarget)
+        if: steps.cache-pofo.outputs.cache-hit != 'true'
+        working-directory: mame
+        env:
+          PATH: /usr/lib/ccache:/usr/bin:/bin
+        run: make SUBTARGET=pofo SOURCES=src/mame/atari/pofo.cpp REGENIE=1 -j$(nproc)
