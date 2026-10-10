@@ -200,10 +200,10 @@ end
 -- address space, a device-local 64KB space distinct from the main
 -- CPU's memory - see m_space_config("videoram", ...) in
 -- src/devices/video/hd61830.cpp). Device tag is HD61830_TAG ("hd61830")
--- from src/mame/atari/pofo.cpp. `length` defaults to 0x1000 (the full
--- visible display RAM window used by the ROM).
+-- from src/mame/atari/pofo.cpp. `length` defaults to 320 (40 cols x 8
+-- rows text mode - the visible display content).
 local function dump_vram(length)
-  return dump_memory(":hd61830", "videoram", 0, length or 0x1000)
+  return dump_memory(":hd61830", "videoram", 0, length or 320)
 end
 
 -- Saves a PNG snapshot of the emulated screen. With no `path`, MAME's
