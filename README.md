@@ -75,7 +75,7 @@ one tool, each gets its own `src/<name>/` directory alongside it.
   hand locally; CI regenerates this file wholesale (not a patch) with
   the commit's short git hash on every build - see the file's own
   header.
-- `tests/test_integration.py` - pytest integration coverage for the
+- `tests/test_pftd.py` - pytest integration coverage for the
   `/sendRaw` API and ROM-native upload/download endpoints.
 
 ## Building
@@ -165,5 +165,5 @@ implementation choices are based on.
    function contract - DIP DOS diverges from PC MS-DOS behavior in
    ways that are easy to miss otherwise (see `ROM_RESEARCH_NOTES.md`'s
    DIP DOS critical error section).
-6. Add a pytest case in `tests/test_integration.py` covering the new
+6. Add a pytest case in `tests/test_pftd.py` covering the new
    command's happy path.

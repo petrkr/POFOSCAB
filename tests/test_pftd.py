@@ -5,10 +5,10 @@ to - MAME or real Portfolio hardware) must already be running; pytest
 never starts or builds anything, it only points at POFOSCAB_BRIDGE_URL.
 
 Usage:
-  pytest tests/test_integration.py -v
+  pytest tests/test_pftd.py -v
 
   # Point at a different bridge
-  POFOSCAB_BRIDGE_URL=http://10.220.179.55:9000 pytest tests/test_integration.py -v
+  POFOSCAB_BRIDGE_URL=http://10.220.179.55:9000 pytest tests/test_pftd.py -v
 """
 
 import json
@@ -129,16 +129,20 @@ def pack_time(hour: int, minute: int, second: int) -> int:
 # ============================================================================
 
 @pytest.fixture(scope="module", autouse=True)
-def setup_tests(cfg):
-    """Ensure the bridge is reachable and the Portfolio link is up.
+def setup_tests(cfg, request):
+    """Ensure the bridge is reachable and the Portfolio link is up, and -
+    if POFOSCAB_MAME_FIFO/POFOSCAB_MAME_OUT_FIFO are set - bring MAME up
+    to the state the SKIP_* env vars describe (see mame_setup).
 
     Only waits for the Portfolio link itself (/status "connected") - does
     NOT gate on PFTD being present, so test_status (the one test that
     only checks the raw link) can still run and report a clear result
     when PFTD isn't up. PFTD-dependent tests are gated separately by the
-    require_pftd fixture below. Does not build, upload, or start anything -
-    that's all external setup.
+    require_pftd fixture below.
     """
+    if cfg.MAME_DIR and os.path.exists(cfg.MAME_FIFO) and os.path.exists(cfg.MAME_OUT_FIFO):
+        request.getfixturevalue("mame_setup")
+
     if not wait_for_http(cfg.BRIDGE_URL, timeout=10):
         pytest.fail(
             f"Bridge not available at {cfg.BRIDGE_URL}. "

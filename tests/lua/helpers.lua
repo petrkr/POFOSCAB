@@ -59,6 +59,31 @@ local function tap(field, hold, gap)
   emu.wait(gap)
 end
 
+-- Drives the Atari Portfolio through its first-boot DIP DOS interactive
+-- setup, starting from clean NVRAM (no saved language/date/time):
+--   wait 1.5s (ROM formats C: before the first screen appears - a
+--              shorter wait landed "e" too early and stuck on language
+--              selection, confirmed by testing)
+--   Enter (dismiss the initial DIP DOS screen)
+--   "e"   (select language - English)
+--   Enter (confirm date)
+--   Enter (confirm time)
+-- ...landing on a plain DOS prompt ("C>"). Only call this against clean
+-- NVRAM - with saved NVRAM, the wizard doesn't appear at all and this
+-- sequence's keypresses would land on the DOS prompt instead.
+local function run_initial()
+  local enter = find_field(":keyboard:Y2", "Enter")
+  local ekey  = find_field(":keyboard:Y2", "e  E")
+
+  emu.wait(1.5)
+  tap(enter, 0.02, 0.3)
+  tap(ekey, 0.02, 0.3)
+  tap(enter, 0.02, 0.3)
+  tap(enter, 0.02, 0.3)
+
+  emu.print_info("helpers.run_initial: DIP DOS init sequence complete")
+end
+
 -- Types "PFTD" + Enter at a plain DOS prompt to start the TSR.
 local function run_pftd()
   local pkey  = find_field(":keyboard:Y4", "p  P")
@@ -131,6 +156,56 @@ local function soft_reboot()
   emu.print_info("helpers.soft_reboot: soft reset issued")
 end
 
+-- Reads `length` bytes starting at `addr` from the named address space
+-- of the device at `tag`, returned as a hex string (no separators).
+-- E.g. dump_memory(":u1", "program", 0, 0x100) for main CPU memory.
+local function dump_memory(tag, space_name, addr, length)
+  local dev = manager.machine.devices[tag]
+  if not dev then
+    emu.print_error("helpers.dump_memory: no " .. tag .. " device")
+    return ""
+  end
+  local mem = dev.spaces[space_name]
+  if not mem then
+    emu.print_error("helpers.dump_memory: no '" .. space_name .. "' space on " .. tag)
+    return ""
+  end
+  local out = {}
+  for i = 0, length - 1 do
+    out[#out + 1] = string.format("%02X", mem:read_u8(addr + i))
+  end
+  return table.concat(out)
+end
+
+-- Reads the HD61830 LCD controller's own video RAM (its "videoram"
+-- address space, a device-local 64KB space distinct from the main
+-- CPU's memory - see m_space_config("videoram", ...) in
+-- src/devices/video/hd61830.cpp). Device tag is HD61830_TAG ("hd61830")
+-- from src/mame/atari/pofo.cpp. `length` defaults to 0x1000 (the full
+-- visible display RAM window used by the ROM).
+local function dump_vram(length)
+  return dump_memory(":hd61830", "videoram", 0, length or 0x1000)
+end
+
+-- Saves a PNG snapshot of the emulated screen. With no `path`, MAME's
+-- own video_manager picks the next free name under -snapshot_directory
+-- (the usual snap/<system>/<N>.png scheme); an absolute `path` writes
+-- there instead - useful for naming a shot after the test/step that
+-- took it. Screen tag is SCREEN_TAG ("screen") from src/mame/atari/pofo.cpp.
+local function screenshot(path)
+  local screen = manager.machine.screens[":screen"]
+  if not screen then
+    emu.print_error("helpers.screenshot: no :screen device")
+    return
+  end
+  local err = screen:snapshot(path)
+  if err then
+    emu.print_error("helpers.screenshot: " .. tostring(err))
+  else
+    emu.print_info("helpers.screenshot: saved " .. (path or "(default snapshot dir)"))
+  end
+end
+
 -- Cleanly stops the MAME process. Used to end an externally-started
 -- -console session once a test run is done with it.
 local function shutdown()
@@ -141,9 +216,13 @@ end
 return {
   find_field = find_field,
   tap = tap,
+  run_initial = run_initial,
   run_pftd = run_pftd,
   run_fileserver = run_fileserver,
   exit_fileserver = exit_fileserver,
   soft_reboot = soft_reboot,
+  dump_memory = dump_memory,
+  dump_vram = dump_vram,
+  screenshot = screenshot,
   shutdown = shutdown,
 }
