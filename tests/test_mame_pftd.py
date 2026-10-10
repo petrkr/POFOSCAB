@@ -36,6 +36,32 @@ def get_status(base_url: str) -> dict:
         return json.loads(resp.read().decode())
 
 
+def send_raw(base_url: str, hexdata: str) -> str:
+    import urllib.parse
+    data = urllib.parse.urlencode({"data": hexdata}).encode()
+    req = urllib.request.Request(f"{base_url}/sendRaw", data=data, method="POST")
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        body = resp.read().decode().strip()
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError:
+        return body
+    if isinstance(parsed, dict) and "response" in parsed:
+        return parsed["response"]
+    return body
+
+
+def draw_ascii(base_url: str, row: int, col: int, text: str) -> str:
+    """DRAW_ASCII (0x8F) - see src/pftd/drawascii.inc. Writes `text` at
+    (row, col) on the LCD. Rows 0,1,5,6,7 and cols 1-38 are safe (rows
+    2-4 get overwritten by the ROM's own File Transfer Server screen;
+    row 0/7 and col 0/39 are PFTD's own border, drawable but reserved
+    for a future status bar, not general content).
+    """
+    payload = bytes([row, col]) + text.encode('ascii') + b'\x00'
+    return send_raw(base_url, (bytes([0x8F, 0x00, 0x70]) + payload).hex())
+
+
 def _read_build_id() -> int:
     """Source of truth for "did we actually boot the build we think we
     did" - src/pftd/build_id.inc, not the running binary (see Error 5
@@ -101,3 +127,48 @@ def test_hello_matches_vram_and_source(mame_ctl, artifacts):
     assert expected_banner in text, (
         f"Expected {expected_banner!r} in VRAM, got: {text!r}"
     )
+
+
+def test_draw_ascii_renders_to_vram(mame_ctl, artifacts):
+    """DRAW_ASCII (0x8F) writes land where they're supposed to - checks
+    a few representative positions across the supported region (rows
+    0,1,5,6,7; cols 1-38 - see draw_ascii()'s docstring) rather than
+    every cell, by writing a distinct marker string per position and
+    confirming each one shows up in a single post-write VRAM dump.
+    """
+    wait_for_status(config.BRIDGE_URL, connected=True, pftd=True)
+
+    # col + len(text) must stay <= 38 (inclusive) - gui_print_si's
+    # AH=0x09 doesn't wrap, but a write past col 39 runs off this
+    # screen's visible text area (and risks landing in/over PFTD's own
+    # border column at 39).
+    markers = {
+        (0, 1): "R0C1",
+        (1, 1): "R1C1",
+        (5, 20): "R5C20",
+        (6, 20): "R6C20",
+        (7, 34): "R7C34",
+    }
+    screens = []
+    for (row, col), text in markers.items():
+        r = draw_ascii(config.BRIDGE_URL, row, col, text)
+        assert r[:2].lower() == "20", f"DRAW_ASCII({row},{col}) failed: {r}"
+        # The wire response comes back once gui_print has returned, but
+        # the LCD device's own rendering can lag a frame or two behind
+        # the VRAM write itself - settle() waits inside MAME (not a
+        # guessed Python-side sleep) before the next write/the dump.
+        mame_ctl.settle(0.05)
+
+        # Capture after each write (not just once at the end) so the
+        # progression is visible, not just the final state.
+        artifacts.screenshot()
+        vram = mame_ctl.dump_vram()
+        artifacts.save_vram(vram)
+        screens.append(vram.decode('ascii', errors='replace'))
+
+    final_screen = screens[-1]
+    for (row, col), text in markers.items():
+        assert text in final_screen, (
+            f"Expected {text!r} (written at row={row}, col={col}) in "
+            f"VRAM, got: {final_screen!r}"
+        )

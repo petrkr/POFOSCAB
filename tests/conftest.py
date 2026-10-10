@@ -264,11 +264,13 @@ class MameCtl:
         )
         return bytes.fromhex(hexstr)
 
-    def dump_vram(self, length: int = 0x1000, save_path: str | None = None) -> bytes:
+    def dump_vram(self, length: int = 320, save_path: str | None = None) -> bytes:
         """Read the HD61830 LCD controller's video RAM (its own
         device-local address space, distinct from main CPU memory).
-        With save_path, also writes the raw bytes there (e.g. for
-        attaching to a test failure) in addition to returning them.
+        Default length is 320 (40 cols x 8 rows text mode - the visible
+        display content). With save_path, also writes the raw bytes
+        there (e.g. for attaching to a test failure) in addition to
+        returning them.
         """
         hexstr = self._send_helper_result(f'h.dump_vram({length})')
         data = bytes.fromhex(hexstr)
@@ -461,19 +463,30 @@ class Artifacts:
         self._ctl = mame_ctl
         self._dir = os.path.join(base_dir, 'artifacts', name)
         os.makedirs(self._dir, exist_ok=True)
+        self._screenshot_n = 0
+        self._vram_n = 0
 
     def screenshot(self) -> None:
-        self._ctl.screenshot(os.path.join(self._dir, 'screenshot.png'))
+        """Each call gets its own numbered file (screenshot_1.png,
+        screenshot_2.png, ...) - a test calling this more than once
+        (e.g. one shot before and one after some action) would
+        otherwise silently overwrite the earlier capture.
+        """
+        self._screenshot_n += 1
+        self._ctl.screenshot(os.path.join(self._dir, f'screenshot_{self._screenshot_n}.png'))
 
     def dump_vram(self) -> None:
-        self._ctl.dump_vram(save_path=os.path.join(self._dir, 'vram.bin'))
+        self._vram_n += 1
+        self._ctl.dump_vram(save_path=os.path.join(self._dir, f'vram_{self._vram_n}.bin'))
 
     def save_vram(self, data: bytes) -> None:
         """Like dump_vram(), but for bytes the caller already has (e.g.
         from its own mame_ctl.dump_vram() call it needs for an assert
-        anyway) - avoids reading VRAM from MAME a second time.
+        anyway) - avoids reading VRAM from MAME a second time. Numbered
+        the same way as dump_vram().
         """
-        with open(os.path.join(self._dir, 'vram.bin'), 'wb') as f:
+        self._vram_n += 1
+        with open(os.path.join(self._dir, f'vram_{self._vram_n}.bin'), 'wb') as f:
             f.write(data)
 
 
