@@ -1,0 +1,98 @@
+name: Test PFTD (MAME)
+
+on:
+  push:
+    branches: [citest]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout POFOSCAB
+        uses: actions/checkout@v4
+
+      - name: Checkout MAME fork
+        uses: actions/checkout@v4
+        with:
+          repository: petrkr/mame-pofo
+          ref: pofosmartcable
+          path: mame
+
+      - name: Get MAME fork SHA
+        id: mame-sha
+        working-directory: mame
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pofo binary from cache
+        id: cache-pofo
+        uses: actions/cache/restore@v4
+        with:
+          path: mame/pofo
+          key: mame-pofo-bin-${{ steps.mame-sha.outputs.sha }}
+
+      - name: Fail if MAME binary isn't cached
+        if: steps.cache-pofo.outputs.cache-hit != 'true'
+        run: |
+          echo "::error::No cached MAME binary for MAME fork SHA ${{ steps.mame-sha.outputs.sha }}. Run the 'Build MAME (pofo)' workflow for this MAME fork commit first."
+          exit 1
+
+      - name: Install runtime deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-2.0-0 libsdl2-ttf-2.0-0 libfontconfig1 libpulse0 libqt6core6 libqt6gui6 libqt6widgets6 libqt6dbus6 nasm
+
+      - name: Download pofo ROM set
+        working-directory: mame
+        run: |
+          mkdir -p roms/pofo
+          wget -4 -q "https://mdk.cab/download/standalone/pofo.7z" -O /tmp/pofo.7z
+          7z x -y -oroms/pofo /tmp/pofo.7z
+
+      - name: Build PFTD.COM
+        run: make pftd
+
+      - name: Install pytest
+        run: sudo apt-get install -y python3-pytest
+
+      - name: Start MAME under -console with FIFOs
+        run: |
+          mkdir -p /tmp/fifodir
+          mkfifo /tmp/fifodir/mame_in /tmp/fifodir/mame_out
+          cd mame
+          SDL_VIDEODRIVER=dummy ./pofo pofo -ccma ram -exp smartcable -console -video none \
+            < /tmp/fifodir/mame_in > /tmp/fifodir/mame_out 2>&1 &
+          echo "MAME_PID=$!" >> "$GITHUB_ENV"
+          sleep 1
+
+      - name: Start bridge
+        run: |
+          python3 tools/mame_bridge.py &
+          echo "BRIDGE_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Run pytest
+        env:
+          MAME_DIR: /tmp/fifodir
+          POFOSCAB_BRIDGE_URL: http://localhost:9000
+          INITIAL: "1"
+          FORMAT_A: "1"
+          UPLOAD: "1"
+          SERVER: "1"
+          PFTD: "1"
+        run: |
+          cd tests
+          python3 -m pytest -v
+
+      - name: Upload MAME artifacts (screenshots/vram dumps)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mame-test-artifacts
+          path: /tmp/fifodir/artifacts
+          if-no-files-found: ignore
+
+      - name: Stop MAME and bridge
+        if: always()
+        run: |
+          kill "$MAME_PID" 2>/dev/null || true
+          kill "$BRIDGE_PID" 2>/dev/null || true
