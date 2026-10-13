@@ -4,9 +4,6 @@
 ; AH=0x0E/AH=0x19 pair) and therefore the first that can genuinely fail
 ; (bad path, already exists, disk full, no media, write-protected).
 ;
-; Command byte 0x88 continues the 0x80+ PFTD command space - see hello.inc's
-; header comment for why that space is safe.
-;
 ; Request layout: payload[0]=0x88, payload[1..2] unused/reserved (0x00,
 ; 0x70 - mirrors the ROM's own convention, same as LIST extended's request),
 ; payload[3..] ASCIIZ target path.

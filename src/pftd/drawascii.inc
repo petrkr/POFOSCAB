@@ -1,18 +1,8 @@
 ; drawascii.inc - DRAW_ASCII (0x8F) command: writes arbitrary text at an
-; arbitrary row/col on the Portfolio's own LCD via gui_print (see
-; gui.inc). Diagnostic/debug tool, not a file-transfer command - built to
-; interactively map out which screen regions the ROM's File Transfer
-; Server screen does/doesn't redraw during normal operation, without
-; needing a PFTD rebuild for every test position (see project memory
-; "pftd screen log idea"). Left in the command set since it stays useful
-; for any future on-screen layout work, not removed after the mapping
-; question above is answered.
-;
-; Command byte 0x8F continues the 0x80+ PFTD command space - see
-; hello.inc's header comment for why that space is safe.
-;
+; arbitrary row/col on the Portfolio's own LCD via gui_print
+
 ; Request layout: payload[0]=0x8F, payload[1..2] unused/reserved (0x00,
-; 0x70 - mirrors the ROM's own convention), payload[3]=row (0-7),
+; 0x70, payload[3]=row (0-7),
 ; payload[4]=col (0-39), payload[5..]=ASCIIZ text to print. No bounds
 ; checking on row/col/text length - this is a debug tool poked at
 ; directly over the wire by whoever is testing, not a client-facing

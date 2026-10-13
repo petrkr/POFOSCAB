@@ -3,9 +3,6 @@
 ; (AH=0x41, files only) - the scope split was deliberate (see delete.inc's
 ; header), this is the follow-up half of that decision.
 ;
-; Command byte 0x8A continues the 0x80+ PFTD command space - see hello.inc's
-; header comment for why that space is safe.
-;
 ; Request layout: payload[0]=0x8A, payload[1..2] unused/reserved (0x00,
 ; 0x70 - mirrors the ROM's own convention), payload[3..] ASCIIZ target path.
 ;

@@ -1,11 +1,6 @@
 ; hello.inc - HELLO (0x80) command: presence/capability discovery response
 ; and its dispatch inside the int 0x61 hook.
 ;
-; Command space: this driver only ever reacts to payload[0] >= 0x80, a
-; block far outside the ROM's own dispatch range ([2,6], with 4 unused),
-; so there is no collision with anything the ROM itself understands now or
-; could plausibly understand in a future revision.
-;
 ;   0x80  HELLO     -> replies with the 12-byte hello block described below
 ;   0x86  LIST_EXT  -> see list.inc
 ;   0x87  DRIVES    -> see drives.inc
@@ -16,10 +11,7 @@
 ;   0x8C  COPY      -> see copy.inc
 ;   0x8D  GETDATETIME -> see datetime.inc
 ;   0x8E  SETDATETIME -> see datetime.inc
-;   0x8F  DRAW_ASCII  -> see drawascii.inc (debug/diagnostic tool, not
-;                        a file-transfer command - see that file's
-;                        header for why it's kept in the command set
-;                        anyway)
+;   0x8F  DRAW_ASCII  -> see drawascii.inc
 ;   0x81-0x85 (reserved for future subcommands)
 ;
 ; HELLO response layout (fixed 12 bytes):
@@ -45,17 +37,6 @@
 ; distinction can tell a real release from a dev build by checking for
 ; 0.0.0, and GitHub itself is the source of truth for which builds are
 ; "real" (Releases) vs. not (workflow artifacts).
-;
-; No capabilities bitmask: this protocol has never been released (no
-; version has ever shipped with only some commands supported - every
-; command that exists has always shipped together, as a development
-; convenience for the web client to hook into during incremental
-; buildout, not a real "partial support" signal), so there is nothing
-; for a bitmask to distinguish yet. What a given PFTD build supports is
-; simply whatever this file's own command list (above) plus each
-; command's .inc file documents for that version - a per-command
-; capability bit would only earn its keep once some real build
-; actually ships without the full set, which hasn't happened.
 
 %include "build_id.inc"
 %include "version.inc"

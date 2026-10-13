@@ -4,15 +4,6 @@
 ; doesn't recurse either; that's a file-manager feature, not a single DOS
 ; API call).
 ;
-; Unlike RENAME (rename.inc, AH=0x56 - a directory-entry rewrite), this
-; works cross-drive: it performs a real read/write data copy, so there is
-; no "same device" requirement. This is the fix RENAME's own header
-; comment names as missing ("that would need a copy+delete sequence at
-; the client level, not a single DOS call").
-;
-; Command byte 0x8C continues the 0x80+ PFTD command space - see hello.inc's
-; header comment for why that space is safe.
-;
 ; Request layout: payload[0]=0x8C, payload[1..2] unused/reserved (0x00,
 ; 0x70 - mirrors the ROM's own convention), payload[3..] TWO consecutive
 ; ASCIIZ strings: source path, then destination path (each NUL-terminated,
@@ -53,13 +44,6 @@
 ; (Find First, Open, Create, N x Read, N x Write, Close x2, maybe Unlink)
 ; - critical_error_flag is cleared before EACH call that can plausibly
 ; raise int 0x24 (no/write-protected media), not just once at the top.
-;
-; DOS 2.x/DIP DOS's actual extended error codes reachable from
-; AH=0x3D/0x3C/0x3F/0x40 are unverified on real hardware - this repo has
-; no prior usage of these functions to compare against (unlike AH=0x39/
-; 0x41/0x3A/0x56, each individually confirmed for MKDIR/DELETE/RMDIR/
-; parts of RENAME). Treat the mapping below as a best-effort RBIL-derived
-; guess until tested - see PROTOCOL.md's "Adding a new command" checklist.
 
 COPY_CMD equ 0x8C
 COPY_BUFSIZE equ 512

@@ -5,9 +5,6 @@
 ; name), but NOT across drives (C: -> D:) - that would need a separate
 ; copy+delete sequence at the client level, out of scope here.
 ;
-; Command byte 0x8B continues the 0x80+ PFTD command space - see hello.inc's
-; header comment for why that space is safe.
-;
 ; Request layout: payload[0]=0x8B, payload[1..2] unused/reserved (0x00,
 ; 0x70 - mirrors the ROM's own convention), payload[3..] TWO consecutive
 ; ASCIIZ strings: old path, then new path (each NUL-terminated, new path

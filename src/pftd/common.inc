@@ -1,16 +1,5 @@
 ; common.inc - buffers shared by more than one dispatch_* command.
 ;
-; Each of these was originally private to one command's .inc file but
-; got reused from another (dta_buf lived in list.inc, borrowed by
-; copy.inc's Find First call; list_src_ds/list_src_si lived directly in
-; PFTD.asm) - both were then silently depended on by a second file with
-; nothing here to say so. That's a trap: change the "owning" file's
-; buffer without noticing the second user, and the second command
-; breaks in a way nothing catches until it's tested on real hardware.
-; Anything used by more than one dispatch_* routine belongs here
-; instead, with an explicit list of who uses it, so a future change
-; can grep this file's callers before touching the layout.
-;
 ; All entries are declared uninitialized (see the "Resident memory
 ; footprint" note below for why that matters) - none of these need a
 ; specific starting value, since every dispatch_* that reads one always

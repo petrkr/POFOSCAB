@@ -1,12 +1,8 @@
 ; delete.inc - DELETE (0x89) command: delete a FILE on the Portfolio.
-; Files only - int 0x21 AH=0x41 (Unlink), NOT AH=0x3A (RMDIR). Directory
-; deletion is its own separate command - see rmdir.inc (0x8A).
-;
-; Command byte 0x89 continues the 0x80+ PFTD command space - see hello.inc's
-; header comment for why that space is safe.
+; Files only - int 0x21 AH=0x41 (Unlink)
 ;
 ; Request layout: payload[0]=0x89, payload[1..2] unused/reserved (0x00,
-; 0x70 - mirrors the ROM's own convention), payload[3..] ASCIIZ target path.
+; 0x70, payload[3..] ASCIIZ target path.
 ;
 ; Response layout (fixed 2 bytes), identical shape to mkdir.inc's:
 ;   offset 0  status  (0x20 = ok, 0x10 = error)
@@ -25,7 +21,7 @@
 ; repeated in detail here.
 ;
 ; DOS 2.x/DIP DOS's actual extended error codes reachable from AH=0x41
-; are mapped in .dos_error below, same shape as mkdir.inc.
+; are mapped in .dos_error
 
 DELETE_CMD equ 0x89
 

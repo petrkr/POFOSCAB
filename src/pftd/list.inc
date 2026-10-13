@@ -1,14 +1,5 @@
 ; list.inc - LIST extended (0x86) command: directory listing with
-; attribute + size per entry, unlike the ROM's own list (payload[0]=6,
-; see ROM_RESEARCH_NOTES.md) which only ever returns bare names.
-;
-; Command byte 0x86 was chosen as the direct analogue of the ROM's own
-; list command (6) - see hello.inc's header comment for why the 0x80+
-; command space is safe to use. Left as a new command rather than
-; changing the ROM's list dispatch: legacy list (6) keeps working
-; unmodified for anything that only speaks the stock protocol - the
-; client picks 0x86 over 6 based on whether this PFTD's HELLO release
-; version is known to support it (see hello.inc).
+; attribute + size per entry
 ;
 ; Request layout (identical prefix to the ROM's own list request):
 ; payload[0]=0x86, payload[1..2] unused (0x00, 0x70 - mirrors the ROM's

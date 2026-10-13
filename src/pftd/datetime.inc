@@ -1,40 +1,23 @@
 ; datetime.inc - GETDATETIME (0x8D) and SETDATETIME (0x8E) commands:
 ; read/write the Portfolio's system date and time (int 0x21
 ; AH=0x2A/0x2C - Get Date/Get Time, and AH=0x2B/0x2D - Set Date/Set
-; Time). Both commands handle date AND time together in one request/
-; response, not four separate GETDATE/SETDATE/GETTIME/SETTIME commands
-; - nobody realistically wants to set only one of the two, and this
-; saves two command bytes.
+; Time).
 ;
-; Command bytes 0x8D/0x8E continue the 0x80+ PFTD command space - see
-; hello.inc's header comment for why that space is safe.
+; Command bytes 0x8D/0x8E
 ;
-; Date/time wire format: packed DOS format, identical to what LIST
-; extended already sends for a file's date/time (list.inc's
+; Date/time wire format: packed DOS format
 ; dta_buf+0x18/+0x16 fields, passed through from Find First's DTA
 ; unmodified):
 ;   date (2 bytes): bits 15-9 = year-1980, bits 8-5 = month, bits 4-0 = day
 ;   time (2 bytes): bits 15-11 = hour, bits 10-5 = minute, bits 4-0 = second/2
-; Chosen for consistency with LIST extended - a client parsing LIST
-; responses already has a packed-date/time parser and can reuse it here
-; without a second format. Accepted trade-off, not an oversight: packed
-; format has no hundredths-of-second field (AH=0x2C/AH=0x2D both have
-; one) and a narrower year range (1980-2107) than AH=0x2A's full 16-bit
-; CX value - both losses are deliberate for wire-format consistency.
 ;
-; GETDATETIME (0x8D): request is a single byte, no path (same shape as
-; DRIVES/HELLO - see drives.inc). Response (fixed 4 bytes): packed
-; date(2B) + packed time(2B). No status/errcode byte - AH=0x2A/AH=0x2C
-; have no documented failure mode (see critical-error note below), same
-; as DRIVES's plain 1-byte response.
+; GETDATETIME (0x8D): request is a single byte.
+; Response (fixed 4 bytes):
+; packed date(2B) + packed time(2B).
 ;
-; SETDATETIME (0x8E): request is 0x8E, 0x00, 0x70 (mirrors the ROM's
-; reserved-byte convention, kept for consistency with every other
-; command even though there's no path here) + packed date(2B) + packed
-; time(2B) - a fixed-size binary payload, not an ASCIIZ string, so no
-; NUL-terminator scanning like the path-based commands do. Response
-; (fixed 2 bytes), same status/errcode shape as mkdir.inc/delete.inc/
-; rmdir.inc/rename.inc/copy.inc:
+; SETDATETIME (0x8E): request is 0x8E, 0x00, 0x70 + packed date(2B)
+; + packed time(2B) - a fixed-size binary payload
+; Response (fixed 2 bytes):
 ;   offset 0  status  (0x20 = ok, 0x10 = error)
 ;   offset 1  errcode (0 on success; 4 = access denied/invalid - AH=0x2B
 ;                       or AH=0x2D returned AL=0xFF, the only documented
@@ -42,15 +25,6 @@
 ;                       out-of-range date or time value; 0xFF = critical
 ;                       error fired - see below)
 ;
-; critical_error.inc dependency: AH=0x2A/0x2B/0x2C/0x2D are documented
-; (RBIL) as pure DOS-internal variable read/writes with no disk/media
-; access at all - the same category as drives.inc's AH=0x0E/AH=0x19,
-; which this driver confirmed critical-error-free on real Portfolio
-; hardware. By analogy, these four calls are expected to need no
-; critical_error_flag handling either. SETDATETIME still clears/checks
-; critical_error_flag around both AH=0x2B and AH=0x2D defensively
-; (cheap insurance, consistent with every command that touches DOS
-; state) even though it is expected to never fire.
 
 GETDATETIME_CMD equ 0x8D
 SETDATETIME_CMD equ 0x8E
