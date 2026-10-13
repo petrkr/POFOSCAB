@@ -9,6 +9,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
     steps:
       - name: Checkout POFOSCAB
         uses: actions/checkout@v4
@@ -82,7 +86,7 @@ jobs:
           PFTD: "1"
         run: |
           cd tests
-          python3 -m pytest -v
+          python3 -m pytest -v --junitxml=junit.xml
 
       - name: Upload MAME artifacts (screenshots/vram dumps)
         if: always()
@@ -91,6 +95,12 @@ jobs:
           name: mame-test-artifacts
           path: /tmp/fifodir/artifacts
           if-no-files-found: ignore
+
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: tests/junit.xml
 
       - name: Stop MAME and bridge
         if: always()
