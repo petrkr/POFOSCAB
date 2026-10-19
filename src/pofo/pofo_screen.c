@@ -24,38 +24,26 @@ void pofo_clear_screen()
 #endasm
 }
 
-void pofo_hide_cursor()
-{
-#asm
-    push ax
-    push cx
-    mov ah,#$01
-    mov ch,#$20
-    xor cl,cl
-    int $10
-    pop cx
-    pop ax
-#endasm
-}
+static unsigned char pofo_cursor_mode_value;
 
-/* INT 10h/AH=01h Set Cursor Type, explicit CX=0x0007 (full block) -
-   leaving CX unset is unreliable (depends on whatever was in CX from
-   earlier code; confirmed by direct test: worked when CX happened to
-   hold a prior pofo_hide_cursor() value, silently failed/showed no
-   cursor from a fresh, undetermined CX otherwise). Shapes other than a
-   full block draw nothing on the Portfolio's LCD, so this is also the
-   only shape worth setting. */
-void pofo_show_cursor()
+int pofo_set_cursor_mode(mode)
+enum pofo_cursor_mode mode;
 {
+    if (mode < POFO_CURSOR_OFF || mode > POFO_CURSOR_BLOCK)
+        return POFO_INVALID_CURSOR_MODE;
+
+    pofo_cursor_mode_value = (unsigned char)mode;
 #asm
     push ax
-    push cx
-    mov ah,#$01
-    mov cx,#$0007
-    int $10
-    pop cx
+    push bx
+    mov ax,#$0F01
+    xor bx,bx
+    mov bl,_pofo_cursor_mode_value
+    int $61
+    pop bx
     pop ax
 #endasm
+    return 0;
 }
 
 /* Export the upstream BCC gotoxy() implementation. */

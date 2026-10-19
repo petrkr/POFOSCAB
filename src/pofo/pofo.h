@@ -30,13 +30,18 @@
 #define POFO_EDIT_MODE_CLEAR_ON_ENTRY 2
 #define POFO_EDIT_TEXT_TOO_LONG -2
 #define POFO_NO_MEMORY -1
+#define POFO_INVALID_CURSOR_MODE -1
+
+enum pofo_cursor_mode {
+    POFO_CURSOR_OFF,
+    POFO_CURSOR_UNDERLINE,
+    POFO_CURSOR_BLOCK
+};
 
 void pofo_clear_screen();
-void pofo_hide_cursor();
-/* INT 10h/AH=01h Set Cursor Type - sets an explicit full-block shape
-   (CX=0x0007); leaving CX unset is unreliable (confirmed by direct
-   test - depends on whatever was in CX from earlier code). */
-void pofo_show_cursor();
+/* Portfolio INT 61h/AH=0Fh cursor mode. Returns 0, or
+   POFO_INVALID_CURSOR_MODE for a value outside enum pofo_cursor_mode. */
+int pofo_set_cursor_mode();
 /* INT 60h/AH=09h Draw Box, single line on page 0. */
 void pofo_draw_box();
 /* INT 60h/AH=09h Draw Box with an explicit style and video page. */
