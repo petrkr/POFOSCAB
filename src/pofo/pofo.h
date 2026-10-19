@@ -20,14 +20,21 @@
     ((unsigned int)(POFO_COORD_COL(bottom_right) - POFO_COORD_COL(top_left) + 1) * \
      (unsigned int)(POFO_COORD_ROW(bottom_right) - POFO_COORD_ROW(top_left) + 1))
 
-#define POFO_BOX_SINGLE 0
-#define POFO_BOX_DOUBLE 1
+enum pofo_box_style {
+    POFO_BOX_SINGLE,
+    POFO_BOX_DOUBLE
+};
 
-#define POFO_EDIT_NO_BOX 0xff
-#define POFO_EDIT_BOX_SINGLE 0
-#define POFO_EDIT_BOX_DOUBLE 1
-#define POFO_EDIT_MODE_KEEP_ON_ENTRY 0
-#define POFO_EDIT_MODE_CLEAR_ON_ENTRY 2
+enum pofo_edit_box {
+    POFO_EDIT_NO_BOX = 0xff,
+    POFO_EDIT_BOX_SINGLE = 0,
+    POFO_EDIT_BOX_DOUBLE = 1
+};
+
+enum pofo_edit_mode {
+    POFO_EDIT_MODE_KEEP_ON_ENTRY,
+    POFO_EDIT_MODE_CLEAR_ON_ENTRY = 2
+};
 #define POFO_EDIT_TEXT_TOO_LONG -2
 #define POFO_NO_MEMORY -1
 #define POFO_INVALID_CURSOR_MODE -1
