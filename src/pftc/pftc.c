@@ -15,7 +15,7 @@ int main()
     gotoxy(2, 0);
     printf("PFTC");
     fflush(stdout);
-    pofo_hide_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_OFF);
 
     state = do_handshake();
     for (;;) {

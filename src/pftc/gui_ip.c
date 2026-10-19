@@ -66,7 +66,7 @@ enum nav_state do_ip_settings()
     strcpy(edit->gateway, interface_settings.gateway);
     edit->ipv6_enabled = interface_settings.ipv6_enabled;
 
-    pofo_show_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_BLOCK);
     last_item = 0;
 
     for (;;) {
@@ -85,7 +85,7 @@ enum nav_state do_ip_settings()
 
         if (result == -1) {
             free(edit);
-            pofo_hide_cursor();
+            pofo_set_cursor_mode(POFO_CURSOR_OFF);
             screen_pop();
             return NAV_INTERFACE_MENU;
         }
@@ -98,7 +98,7 @@ enum nav_state do_ip_settings()
             strcpy(interface_settings.gateway, edit->gateway);
             interface_settings.ipv6_enabled = edit->ipv6_enabled;
             free(edit);
-            pofo_hide_cursor();
+            pofo_set_cursor_mode(POFO_CURSOR_OFF);
             screen_pop();
             return NAV_INTERFACE_MENU;
         }
@@ -148,7 +148,7 @@ enum nav_state do_ip_settings()
 
 enum nav_state do_info_screen()
 {
-    pofo_hide_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_OFF);
     pofo_error_dialog(DIALOG_TOP_LEFT, not_supported_dialog_text);
     return NAV_ROOT_MENU;
 }

@@ -39,7 +39,7 @@ enum pofo_cursor_mode {
 };
 
 void pofo_clear_screen();
-/* Portfolio INT 61h/AH=0Fh cursor mode. Returns 0, or
+/* Portfolio INT 61h/AH=0Fh cursor mode. Returns the previous mode, or
    POFO_INVALID_CURSOR_MODE for a value outside enum pofo_cursor_mode. */
 int pofo_set_cursor_mode();
 /* INT 60h/AH=09h Draw Box, single line on page 0. */

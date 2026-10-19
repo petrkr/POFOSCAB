@@ -239,10 +239,10 @@ enum nav_state do_root_menu()
         return NAV_DASHBOARD;
     }
 
-    pofo_show_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_BLOCK);
     result = pofo_menu_show(NAV_MENU_TOP_LEFT, root_menu_text, 0, 0, 0,
                             NAV_MENU_TYPE_DEPTH);
-    pofo_hide_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_OFF);
     screen_pop();
 
     if (result == -1)
@@ -326,10 +326,10 @@ enum nav_state do_interfaces_list()
         return NAV_ROOT_MENU;
     }
 
-    pofo_show_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_BLOCK);
     result = pofo_menu_show(INTERFACES_MENU_TOP_LEFT, interfaces_menu_text,
                             0, 0, 0, INTERFACES_MENU_TYPE_DEPTH);
-    pofo_hide_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_OFF);
     screen_pop();
 
     if (result == -1)

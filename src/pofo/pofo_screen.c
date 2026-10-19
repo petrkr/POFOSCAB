@@ -25,6 +25,7 @@ void pofo_clear_screen()
 }
 
 static unsigned char pofo_cursor_mode_value;
+static unsigned char pofo_cursor_mode_old;
 
 int pofo_set_cursor_mode(mode)
 enum pofo_cursor_mode mode;
@@ -36,14 +37,16 @@ enum pofo_cursor_mode mode;
 #asm
     push ax
     push bx
-    mov ax,#$0F01
+    mov ah,#$0F
+    mov al,#1
     xor bx,bx
     mov bl,_pofo_cursor_mode_value
     int $61
+    mov _pofo_cursor_mode_old,bl
     pop bx
     pop ax
 #endasm
-    return 0;
+    return (int)pofo_cursor_mode_old;
 }
 
 /* Export the upstream BCC gotoxy() implementation. */

@@ -62,10 +62,10 @@ enum nav_state do_interface_menu()
         return NAV_INTERFACES;
     }
 
-    pofo_show_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_BLOCK);
     result = pofo_menu_show(INTERFACE_MENU_TOP_LEFT, interface_menu_text,
                             0, 0, 0, INTERFACE_MENU_TYPE_DEPTH);
-    pofo_hide_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_OFF);
     screen_pop();
 
     if (result == -1) {
@@ -136,10 +136,10 @@ enum nav_state do_interface_detail()
         return NAV_INTERFACE_MENU;
     }
 
-    pofo_show_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_BLOCK);
     pofo_menu_show(DETAIL_MENU_TOP_LEFT, detail_menu_text, 0, 0, 0,
                    DETAIL_MENU_TYPE_DEPTH);
-    pofo_hide_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_OFF);
     screen_pop();
 
     return NAV_INTERFACE_MENU;
@@ -209,13 +209,13 @@ unsigned char *security_out;
     int result;
 
     wifiscan_request[1] = selected_interface;
-    pofo_hide_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_OFF);
     progress_dialog_open("Scanning");
     status = smartcable_exchange(wifiscan_request, sizeof(wifiscan_request),
                            wifiscan_response, sizeof(wifiscan_response),
                            &received);
     progress_dialog_close();
-    pofo_show_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_BLOCK);
     if (status != 0) {
         show_transport_error();
         return 0;
@@ -309,7 +309,7 @@ enum nav_state do_network_settings()
     strcpy(edit->ssid, interface_settings.ssid);
     strcpy(edit->psk, interface_settings.psk);
 
-    pofo_show_cursor();
+    pofo_set_cursor_mode(POFO_CURSOR_BLOCK);
     last_item = 0;
 
     for (;;) {
@@ -328,7 +328,7 @@ enum nav_state do_network_settings()
 
         if (result == -1) {
             free(edit);
-            pofo_hide_cursor();
+            pofo_set_cursor_mode(POFO_CURSOR_OFF);
             screen_pop();
             return NAV_INTERFACE_MENU;
         }
@@ -339,7 +339,7 @@ enum nav_state do_network_settings()
             strcpy(interface_settings.ssid, edit->ssid);
             strcpy(interface_settings.psk, edit->psk);
             free(edit);
-            pofo_hide_cursor();
+            pofo_set_cursor_mode(POFO_CURSOR_OFF);
             screen_pop();
             return NAV_INTERFACE_MENU;
         }
