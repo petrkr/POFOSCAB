@@ -65,7 +65,7 @@ struct netif_state *out;
     netif_request[1] = interface;
     progress_dialog_open("Getting interface");
     status = smartcable_exchange(netif_request, sizeof(netif_request),
-                           response, sizeof(response), &received);
+                           response, sizeof(response), &received, 1);
     progress_dialog_close();
     if (status != 0) {
         show_transport_error();
@@ -129,7 +129,7 @@ static int do_fetch_dashboard()
 
     progress_dialog_open("Getting dashboard");
     status = smartcable_exchange(dashboard_request, sizeof(dashboard_request),
-                           dashboard_response, sizeof(dashboard_response), &received);
+                           dashboard_response, sizeof(dashboard_response), &received, 1);
     progress_dialog_close();
     if (status != 0) {
         show_transport_error();
@@ -172,7 +172,7 @@ enum nav_state do_handshake()
     progress_dialog_open("Connecting");
 
     status = smartcable_exchange(hello_request, sizeof(hello_request),
-                           response, sizeof(response), &received);
+                           response, sizeof(response), &received, 1);
 
     progress_dialog_close();
 
@@ -290,7 +290,7 @@ enum nav_state do_interfaces_list()
 
     progress_dialog_open("Getting interfaces");
     status = smartcable_exchange(netifs_request, sizeof(netifs_request),
-                           response, sizeof(response), &received);
+                           response, sizeof(response), &received, 1);
     progress_dialog_close();
     if (status != 0) {
         show_transport_error();
@@ -404,7 +404,7 @@ int apply_netif_settings()
     progress_dialog_open("Applying");
     status = smartcable_exchange(set_netif_request,
                            (unsigned int)(p - set_netif_request),
-                           response, sizeof(response), &received);
+                           response, sizeof(response), &received, 1);
     progress_dialog_close();
     if (status != 0) {
         show_transport_error();

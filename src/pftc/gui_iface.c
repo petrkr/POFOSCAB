@@ -193,6 +193,25 @@ struct net_edit *edit;
 }
 
 /* Returns 1 after copying a selection; 0 leaves both outputs unchanged. */
+static char *security_label(security)
+unsigned char security;
+{
+    switch (security) {
+    case PFTC_SECURITY_OPEN:
+        return "open";
+    case PFTC_SECURITY_WPA2_PSK:
+        return "WPA2";
+    case PFTC_SECURITY_WPA3_PSK:
+        return "WPA3";
+    case PFTC_SECURITY_WEP:
+        return "WEP";
+    case PFTC_SECURITY_WPA_WPA2:
+        return "WPA/WPA2";
+    default:
+        return "unknown";
+    }
+}
+
 static int do_wifi_scan_menu(ssid_out, security_out)
 char *ssid_out;
 unsigned char *security_out;
@@ -213,7 +232,7 @@ unsigned char *security_out;
     progress_dialog_open("Scanning");
     status = smartcable_exchange(wifiscan_request, sizeof(wifiscan_request),
                            wifiscan_response, sizeof(wifiscan_response),
-                           &received);
+                           &received, 30);
     progress_dialog_close();
     pofo_set_cursor_mode(POFO_CURSOR_BLOCK);
     if (status != 0) {
@@ -248,9 +267,7 @@ unsigned char *security_out;
         wifiscan_menu_security[i] = security;
 
         out += sprintf(out, "%s (%s, %d)", label,
-                security == PFTC_SECURITY_OPEN ? "open" :
-                security == PFTC_SECURITY_WPA3_PSK ? "WPA3" : "WPA2",
-                rssi) + 1;
+                security_label(security), rssi) + 1;
 
         p += 1 + ssid_len + 2;
     }

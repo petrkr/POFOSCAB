@@ -73,12 +73,14 @@ unsigned int *received;
     return status;
 }
 
-int smartcable_exchange(request, request_size, response, response_size, received)
+int smartcable_exchange(request, request_size, response, response_size, received,
+                        receive_waits)
 unsigned char *request;
 unsigned int request_size;
 unsigned char *response;
 unsigned int response_size;
 unsigned int *received;
+unsigned char receive_waits;
 {
     int status;
     int retries;
@@ -98,8 +100,10 @@ unsigned int *received;
     } while (1);
 
     if (status == 0) {
-        smartcable_wait_500ms();
-        status = smartcable_receive(response, response_size, received);
+        do {
+            smartcable_wait_500ms();
+            status = smartcable_receive(response, response_size, received);
+        } while (status == SMARTCABLE_STATUS_SYNC_MISSED && receive_waits-- != 0);
     }
 
     smartcable_close();

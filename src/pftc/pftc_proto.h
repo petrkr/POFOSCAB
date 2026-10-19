@@ -17,6 +17,9 @@
 #define PFTC_SECURITY_OPEN      0x00
 #define PFTC_SECURITY_WPA2_PSK  0x01
 #define PFTC_SECURITY_WPA3_PSK  0x02
+#define PFTC_SECURITY_WEP       0x03
+#define PFTC_SECURITY_WPA_WPA2  0x04
+#define PFTC_SECURITY_UNKNOWN   0xFF
 
 struct hello_response {
     unsigned char status;
