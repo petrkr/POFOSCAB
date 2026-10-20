@@ -179,6 +179,12 @@ mock_wifiscan_results = [
     WifiScanResult(ssid=b"OpenGuest", rssi=-60, security=SECURITY_OPEN),
     WifiScanResult(ssid=b"Neighbour5G", rssi=-72, security=SECURITY_WPA3_PSK),
     WifiScanResult(ssid="Caf\xe9WiFi".encode("latin-1"), rssi=-80, security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"OfficeNet", rssi=-52, security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"Workshop", rssi=-67, security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"LegacyWEP", rssi=-84, security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"Guest-2G", rssi=-75, security=SECURITY_OPEN),
+    WifiScanResult(ssid=b"IoT-Devices", rssi=-70, security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"FarAwayAP", rssi=-91, security=SECURITY_WPA3_PSK),
 ]
 
 
