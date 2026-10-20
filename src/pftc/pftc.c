@@ -7,6 +7,7 @@
 int main()
 {
     enum nav_state state;
+    int saved_cursor_mode;
 
     pofo_clear_screen();
     pofo_draw_box(POFO_COORD(0, 0), POFO_COORD(7, 39));
@@ -15,7 +16,7 @@ int main()
     gotoxy(2, 0);
     printf("PFTC");
     fflush(stdout);
-    pofo_set_cursor_mode(POFO_CURSOR_OFF);
+    saved_cursor_mode = pofo_set_cursor_mode(POFO_CURSOR_OFF);
 
     state = do_handshake();
     for (;;) {
@@ -46,6 +47,7 @@ int main()
             break;
         case NAV_EXIT:
             pofo_clear_screen();
+            pofo_set_cursor_mode(saved_cursor_mode);
             return 0;
         }
     }
