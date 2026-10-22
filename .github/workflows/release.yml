@@ -10,7 +10,9 @@ permissions:
 
 jobs:
   release:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'pftd-v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout POFOSCAB
@@ -19,26 +21,16 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch }}
 
       - name: Download PFTD.COM artifact from the test run
-        id: download
-        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: PFTD-COM
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
-      - name: Skip - not a tag build (PFTD-COM artifact wasn't uploaded)
-        if: steps.download.outcome != 'success'
-        run: |
-          echo "No PFTD-COM artifact on this test run - it wasn't a tag build, nothing to release."
-          exit 0
-
       - name: Package for release
-        if: steps.download.outcome == 'success'
         run: zip "PFTD-${{ github.event.workflow_run.head_branch }}.zip" PFTD.COM
 
       - name: Create GitHub Release
-        if: steps.download.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

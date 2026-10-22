@@ -3,7 +3,7 @@ name: Test PFTD (MAME)
 on:
   push:
     branches: [citest, master]
-    tags: ['v*.*.*']
+    tags: ['pftd-v*.*.*']
   pull_request:
 
 jobs:

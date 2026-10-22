@@ -74,8 +74,8 @@ as any other breaking software change; there is no separate "response
 format version" distinct from this. `0.0.0` means "not a tagged
 release" - an ordinary development build. There is no separate pre-
 release/snapshot flag; a real release is whatever GitHub itself
-published under Releases for a `vMAJOR.MINOR.PATCH` tag, anything else
-is just a workflow artifact build.
+published under Releases for a `pftd-vMAJOR.MINOR.PATCH` tag, anything
+else is just a workflow artifact build.
 
 ### LIST - `0x86`
 
