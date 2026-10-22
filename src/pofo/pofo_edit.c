@@ -1,8 +1,10 @@
 #include "pofo.h"
-#include <string.h>
+#include "tinylib.h"
 
-/* Exact INT 60h/AH=01h descriptor offsets; PCC structs add padding. */
-#define POFO_EDIT_BLOCK_SIZE       35
+/* Exact INT 60h/AH=01h descriptor offsets. bcc pads structs to even
+   offsets, and the ROM's layout has words at odd ones (HIT at 11), so
+   the block is a plain byte array and words go in through
+   POFO_EDIT_WORD - the 8086 doesn't mind the unaligned access. */
 #define POFO_EDIT_TARGET_OFFSET     0
 #define POFO_EDIT_TARGET_SEGMENT    2
 #define POFO_EDIT_POS_OFFSET        4
@@ -25,20 +27,43 @@
 #define POFO_EDIT_UNDELETE_SEGMENT 33
 #define POFO_EDIT_TITLE_PROMPT_SIZE 256
 
-static unsigned char pofo_edit_block[POFO_EDIT_BLOCK_SIZE];
+#define POFO_EDIT_WORD(offset) (*(unsigned int *)(pofo_edit_block + (offset)))
+
 static char pofo_edit_title_prompt[POFO_EDIT_TITLE_PROMPT_SIZE];
 static unsigned int pofo_edit_result;
 
+extern unsigned char pofo_edit_block[];
 extern pofo_edit_getkey();
 extern pofo_edit_undelete();
 
-static void pofo_edit_word(offset, value)
-unsigned int offset;
-unsigned int value;
-{
-    pofo_edit_block[offset] = (unsigned char)value;
-    pofo_edit_block[offset + 1] = (unsigned char)(value >> 8);
-}
+/* The descriptor lives in the data segment with its constant fields
+   (title, getkey and undelete offsets) filled in by the linker; the
+   per-call fields and the segments are stored by pofo_line_edit(). */
+#asm
+    .data
+_pofo_edit_block:
+    .word 0                         ! 0  target offset
+    .word 0                         ! 2  target segment
+    .word 0                         ! 4  position
+    .word 0                         ! 6  max length
+    .byte 0                         ! 8  x
+    .byte 0                         ! 9  y
+    .byte 0                         ! 10 mode
+    .word 0                         ! 11 hit key
+    .word _pofo_edit_title_prompt   ! 13 title/prompt offset
+    .word 0                         ! 15 title/prompt segment
+    .word 0                         ! 17 exit keys offset
+    .word 0                         ! 19 exit keys segment
+    .word _pofo_edit_getkey         ! 21 getkey offset
+    .word 0                         ! 23 getkey segment
+    .byte 0                         ! 25 width
+    .byte 0                         ! 26 window box
+    .word 0                         ! 27 reserved
+    .word 0                         ! 29 reserved
+    .word _pofo_edit_undelete       ! 31 undelete offset
+    .word 0                         ! 33 undelete segment
+    .text
+#endasm
 
 int pofo_line_edit(top_left, title, prompt, value, max, width, mode,
                    window, exit_keys)
@@ -52,38 +77,30 @@ unsigned char width;
 unsigned char window;
 unsigned int *exit_keys;
 {
-    unsigned int title_length;
-    unsigned int prompt_length;
+    char *p;
 
-    title_length = strlen(title);
-    prompt_length = strlen(prompt);
-    if (title_length + prompt_length + 3 > POFO_EDIT_TITLE_PROMPT_SIZE)
+    if (str_len(title) + str_len(prompt) + 3 > POFO_EDIT_TITLE_PROMPT_SIZE)
         return POFO_EDIT_TEXT_TOO_LONG;
 
-    memcpy(pofo_edit_title_prompt, title, title_length);
-    pofo_edit_title_prompt[title_length] = 0;
-    memcpy(pofo_edit_title_prompt + title_length + 1, prompt, prompt_length);
-    pofo_edit_title_prompt[title_length + prompt_length + 1] = 0;
-    pofo_edit_title_prompt[title_length + prompt_length + 2] = 0;
+    p = str_copy(pofo_edit_title_prompt, title) + 1;
+    p = str_copy(p, prompt) + 1;
+    *p = 0;
 
-    pofo_edit_word(POFO_EDIT_TARGET_OFFSET, (unsigned int)value);
-    pofo_edit_word(POFO_EDIT_POS_OFFSET, 0);
-    pofo_edit_word(POFO_EDIT_MAX_OFFSET, max);
+    POFO_EDIT_WORD(POFO_EDIT_TARGET_OFFSET) = (unsigned int)value;
+    POFO_EDIT_WORD(POFO_EDIT_POS_OFFSET) = 0;
+    POFO_EDIT_WORD(POFO_EDIT_MAX_OFFSET) = max;
     pofo_edit_block[POFO_EDIT_XPOS_OFFSET] = POFO_COORD_COL(top_left);
     pofo_edit_block[POFO_EDIT_YPOS_OFFSET] = POFO_COORD_ROW(top_left);
     pofo_edit_block[POFO_EDIT_MODE_OFFSET] = mode;
-    pofo_edit_word(POFO_EDIT_HIT_OFFSET, 0);
-    pofo_edit_word(POFO_EDIT_TITLE_OFFSET, (unsigned int)pofo_edit_title_prompt);
-    pofo_edit_word(POFO_EDIT_EXIT_OFFSET, (unsigned int)exit_keys);
-    pofo_edit_word(POFO_EDIT_GETKEY_OFFSET, (unsigned int)pofo_edit_getkey);
+    POFO_EDIT_WORD(POFO_EDIT_HIT_OFFSET) = 0;
+    POFO_EDIT_WORD(POFO_EDIT_EXIT_OFFSET) = (unsigned int)exit_keys;
     pofo_edit_block[POFO_EDIT_WIDTH_OFFSET] = width;
     pofo_edit_block[POFO_EDIT_WINDOW_OFFSET] = window;
-    pofo_edit_word(POFO_EDIT_RESERVED1_OFFSET, 0);
-    pofo_edit_word(POFO_EDIT_RESERVED2_OFFSET, 0);
-    pofo_edit_word(POFO_EDIT_UNDELETE_OFFSET, (unsigned int)pofo_edit_undelete);
+    POFO_EDIT_WORD(POFO_EDIT_RESERVED1_OFFSET) = 0;
+    POFO_EDIT_WORD(POFO_EDIT_RESERVED2_OFFSET) = 0;
 
 #asm
-    push bx
+    push si
     mov ax,ds
     mov _pofo_edit_block+POFO_EDIT_TARGET_SEGMENT,ax
     mov _pofo_edit_block+POFO_EDIT_TITLE_SEGMENT,ax
@@ -95,7 +112,7 @@ unsigned int *exit_keys;
     mov ax,#0x0100
     int 0x60
     mov _pofo_edit_result,ax
-    pop bx
+    pop si
 #endasm
 
     return (int)pofo_edit_result;

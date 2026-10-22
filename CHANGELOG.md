@@ -6,6 +6,10 @@
 - DATETIME: simplified packed date/time unpacking.
 - Added documentation
 - Added HTML report in tests
+- PFTC: binary cut from 14216 to 7408 bytes with no feature change:
+  own minimal libc (`tinylib`) instead of stdio/printf/malloc, own
+  .COM startup, bcc `-C-c -C-f` calling convention, static buffers
+  and shared menu/request/screen-stack helpers.
 
 ## [0.1.1]
 
