@@ -1,0 +1,47 @@
+name: Build PFTC.COM
+
+on:
+  push:
+    branches: [master]
+    tags: ['pftc-v*.*.*']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout POFOSCAB
+        uses: actions/checkout@v4
+
+      - name: Install dev86
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bcc
+
+      - name: Generate PFTC build ID
+        working-directory: src/pftc
+        run: |
+          HASH=$(git rev-parse --short=8 HEAD)
+          cat > build_id.h <<EOF
+          #ifndef PFTC_BUILD_ID_H
+          #define PFTC_BUILD_ID_H
+          #define PFTC_BUILD_ID 0x${HASH}UL
+          #endif
+          EOF
+
+      - name: Build PFTC.COM
+        run: make pftc
+
+      - name: Determine build identifier
+        id: ident
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "id=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "id=$(git rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PFTC-${{ steps.ident.outputs.id }}
+          path: build/PFTC.COM

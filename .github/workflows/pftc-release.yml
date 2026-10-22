@@ -1,0 +1,40 @@
+name: Release PFTC.COM
+
+on:
+  workflow_run:
+    workflows: ["Build PFTC.COM"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'pftc-v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout POFOSCAB
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      - name: Download PFTC.COM artifact from the build run
+        uses: actions/download-artifact@v4
+        with:
+          name: PFTC-${{ github.event.workflow_run.head_branch }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Package for release
+        run: zip "PFTC-${{ github.event.workflow_run.head_branch }}.zip" PFTC.COM
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.event.workflow_run.head_branch }}" \
+            "PFTC-${{ github.event.workflow_run.head_branch }}.zip" \
+            --title "${{ github.event.workflow_run.head_branch }}" \
+            --generate-notes
