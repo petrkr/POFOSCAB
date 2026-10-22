@@ -9,6 +9,9 @@
 #define PFTC_GET_DASHBOARD 0x08
 #define PFTC_WIFI_CLIENT  0x01
 
+/* Every response starts with status (PFTC_STATUS_OK) and error code (0). */
+#define PFTC_STATUS_OK 0x20
+
 #define PFTC_DASHBOARD_MODE_FULL 0x00
 
 #define PFTC_IP_MODE_DHCP   0x00
@@ -74,7 +77,6 @@ extern unsigned char netifs_request[1];
 extern unsigned char netif_request[2];
 extern unsigned char wifiscan_request[2];
 extern unsigned char dashboard_request[2];
-extern unsigned char response[64];
 
 /* SET_NETIF request buffer, built in place by apply_netif_settings():
    opcode(1) + interface(1) + type(1) + enabled(1) + ip_mode(1) +
@@ -83,19 +85,14 @@ extern unsigned char response[64];
 #define SET_NETIF_REQUEST_SIZE 112
 extern unsigned char set_netif_request[SET_NETIF_REQUEST_SIZE];
 
-/* GET_WIFISCAN alone can outgrow response[] - up to 10 entries (the
-   protocol's own cap), each SSID length + up to 32 SSID bytes + RSSI +
-   security = up to 35 bytes, plus the 3-byte status/error/count
-   header: 3 + 10*35 = 353, rounded up. Kept separate from response[]
-   so every other, small exchange doesn't pay for this one's worst case. */
-#define WIFISCAN_RESPONSE_SIZE 360
-extern unsigned char wifiscan_response[WIFISCAN_RESPONSE_SIZE];
-
-/* GET_DASHBOARD FULL is variable length (one entry per displayed
-   field, each up to 4 + 38 bytes) - kept separate from response[] for
-   the same reason as wifiscan_response above. 256 bytes comfortably
-   covers a handful of entries on a 40-column display. */
-#define DASHBOARD_RESPONSE_SIZE 256
-extern unsigned char dashboard_response[DASHBOARD_RESPONSE_SIZE];
+/* One response buffer for every exchange - each caller consumes its
+   response before the next request goes out. Sized for the largest,
+   GET_WIFISCAN: up to 10 entries (the protocol's own cap), each SSID
+   length + up to 32 SSID bytes + RSSI + security = up to 35 bytes, plus
+   the 3-byte status/error/count header: 3 + 10*35 = 353, rounded up.
+   GET_DASHBOARD FULL (one entry per displayed field, each up to 4 + 38
+   bytes) fits comfortably too. */
+#define RESPONSE_SIZE 360
+extern unsigned char response[RESPONSE_SIZE];
 
 #endif

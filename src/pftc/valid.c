@@ -1,9 +1,13 @@
 #include "valid.h"
 
-/* Hand-written in asm - the equivalent C loop (digit accumulation,
-   octet/digit counters, three exit conditions) costs noticeably more
-   in the small memory model's calling convention than the same logic
-   written directly. */
+/* All four routines are hand-written asm - the equivalent C loops
+   (digit accumulation, octet/digit counters, several exit conditions)
+   cost noticeably more in bcc's calling convention than the same logic
+   written directly. Each one picks its arguments up according to the
+   convention the program is compiled with: with -C-f the first argument
+   arrives in AX and the rest on the stack, otherwise everything is on
+   the stack (offsets below count the registers pushed first). */
+
 int is_valid_ipv4(text)
 char *text;
 {
@@ -11,8 +15,12 @@ char *text;
     push si
     push di
     push bp
+#if __FIRST_ARG_IN_AX__
+    mov si,ax
+#else
     mov bx,sp
     mov si,8[bx]
+#endif
     xor bx,bx
 .ipv4_octet:
     xor bp,bp
@@ -71,8 +79,12 @@ char *text;
 #asm
     push si
     push bp
+#if __FIRST_ARG_IN_AX__
+    mov si,ax
+#else
     mov bx,sp
     mov si,6[bx]
+#endif
     xor bp,bp
     xor cx,cx
 .prefix_digit:
@@ -110,12 +122,10 @@ char *text;
 #endasm
 }
 
-/* Hand-written in asm, same rationale as is_valid_ipv4() above - only
-   takes two pointer params (char* in, unsigned char* out), no calls
-   to other C functions from inside. Runs only after is_valid_ipv4()
-   already validated the string, so no range/format checking here:
-   just the same digit-accumulation loop, writing each octet to out[]
-   and skipping the '.' instead of checking it. */
+/* Runs only after is_valid_ipv4() already validated the string, so no
+   range/format checking here: just the same digit-accumulation loop,
+   writing each octet to out[] and skipping the '.' instead of checking
+   it. */
 void parse_ipv4(text, out)
 char *text;
 unsigned char *out;
@@ -124,9 +134,15 @@ unsigned char *out;
     push si
     push di
     push bp
+#if __FIRST_ARG_IN_AX__
+    mov si,ax
+    mov bx,sp
+    mov di,8[bx]
+#else
     mov bx,sp
     mov si,8[bx]
     mov di,10[bx]
+#endif
     mov bx,#4
 .pip4_octet:
     xor bp,bp
@@ -158,9 +174,7 @@ unsigned char *out;
 #endasm
 }
 
-/* Hand-written in asm, same rationale as is_valid_ipv4() above - only
-   takes one char* param, no calls to other C functions from inside.
-   Runs only after is_valid_prefix() already validated the string:
+/* Runs only after is_valid_prefix() already validated the string:
    parses the 0-32 decimal prefix length into a byte. Expanding this
    to a literal dotted netmask is the ESP's job, not the client's -
    SET_NETIF carries the prefix length as-is (see PFTC_PROTOCOL.md). */
@@ -170,8 +184,12 @@ char *text;
 #asm
     push si
     push bp
+#if __FIRST_ARG_IN_AX__
+    mov si,ax
+#else
     mov bx,sp
     mov si,6[bx]
+#endif
     xor bp,bp
 .pprefix_digit:
     mov al,[si]
