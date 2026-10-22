@@ -17,6 +17,30 @@ jobs:
       - name: Checkout POFOSCAB
         uses: actions/checkout@v4
 
+      - name: Verify PFTD tag version
+        if: github.ref_type == 'tag'
+        run: |
+          if [[ "${GITHUB_REF_NAME}" =~ ^pftd-v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            TAG_VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "::error::Tag must start with pftd-vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          SOURCE_VERSION=$(awk '
+            $1 == "VERSION_MAJOR" { major = $3 }
+            $1 == "VERSION_MINOR" { minor = $3 }
+            $1 == "VERSION_PATCH" { patch = $3 }
+            END {
+              if (major == "" || minor == "" || patch == "")
+                exit 1
+              print major "." minor "." patch
+            }
+          ' src/pftd/version.inc)
+          if [[ "${TAG_VERSION}" != "${SOURCE_VERSION}" ]]; then
+            echo "::error::Tag version ${TAG_VERSION} differs from PFTD version ${SOURCE_VERSION}"
+            exit 1
+          fi
+
       - name: Checkout MAME fork
         uses: actions/checkout@v4
         with:
