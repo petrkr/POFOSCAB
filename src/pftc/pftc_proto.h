@@ -22,6 +22,10 @@
 #define PFTC_SECURITY_WPA3_PSK  0x02
 #define PFTC_SECURITY_WEP       0x03
 #define PFTC_SECURITY_WPA_WPA2  0x04
+#define PFTC_SECURITY_WPA       0x05
+#define PFTC_SECURITY_WPA2_WPA3 0x06
+#define PFTC_SECURITY_OWE       0x07
+#define PFTC_SECURITY_EAP       0x08
 #define PFTC_SECURITY_UNKNOWN   0xFF
 
 struct hello_response {

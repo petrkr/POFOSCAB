@@ -8,13 +8,28 @@
 
 #define WIFISCAN_MENU_MAX_ITEMS 10
 #define WIFISCAN_SSID_MAX 32
+#define WIFISCAN_SSID_WIDTH 18
+#define WIFISCAN_SECURITY_WIDTH 8
+#define SIGNAL_BAR_LEVELS 5
 
 static char interface_menu_suffix[] =
     "Status\0Network settings\0IP settings\0Apply\0\0";
 
 static char invalid_psk_dialog_text[] = "PSK must be 8-63 chars, or empty.";
 
-static char *security_labels[] = { "open", "WPA2", "WPA3", "WEP", "WPA/WPA2" };
+static char security_labels[][WIFISCAN_SECURITY_WIDTH + 1] = {
+    "    open", "    WPA2", "    WPA3", "     WEP", "WPA/WPA2",
+    "     WPA", "  WPA2/3", "     OWE", "     EAP"
+};
+static char signal_bars[6][6] = {
+    { 0xB0, 0xB0, 0xB0, 0xB0, 0xB0, 0 },
+    { 0xDB, 0xB0, 0xB0, 0xB0, 0xB0, 0 },
+    { 0xDB, 0xDB, 0xB0, 0xB0, 0xB0, 0 },
+    { 0xDB, 0xDB, 0xDB, 0xB0, 0xB0, 0 },
+    { 0xDB, 0xDB, 0xDB, 0xDB, 0xB0, 0 },
+    { 0xDB, 0xDB, 0xDB, 0xDB, 0xDB, 0 }
+};
+static signed char signal_thresholds[] = { -80, -70, -60, -50, -40 };
 
 /* Avoids refetching and discarding confirmed edits after a sub-menu. */
 static unsigned char interface_menu_initialized;
@@ -121,12 +136,22 @@ static void build_network_settings_text()
 static char *security_label(security)
 unsigned char security;
 {
-    if (security <= PFTC_SECURITY_WPA_WPA2)
+    if (security <= PFTC_SECURITY_EAP)
         return security_labels[security];
-    return "unknown";
+    return "     UNK";
 }
 
-/* Returns 1 after copying a selection; 0 leaves both outputs unchanged. */
+static char *signal_bar(rssi)
+signed char rssi;
+{
+    unsigned char level;
+
+    level = 0;
+    while (level < SIGNAL_BAR_LEVELS && rssi >= signal_thresholds[level])
+        level++;
+    return signal_bars[level];
+}
+
 static int do_wifi_scan_menu(ssid_out, security_out)
 char *ssid_out;
 unsigned char *security_out;
@@ -135,6 +160,9 @@ unsigned char *security_out;
     int count, i, ssid_len;
     signed char rssi;
     char *out;
+    char *bar;
+    unsigned char security;
+    unsigned char cells;
     int result;
     unsigned char *entries[WIFISCAN_MENU_MAX_ITEMS];
 
@@ -157,11 +185,29 @@ unsigned char *security_out;
         entries[i] = p;
         ssid_len = p[0];
         if (ssid_len > WIFISCAN_SSID_MAX)
-            ssid_len = WIFISCAN_SSID_MAX;
-        mem_copy(out, p + 1, ssid_len);
+            ssid_len = 32;
         rssi = (signed char)p[1 + ssid_len];
-        out = fmt(out + ssid_len, " (%s, %d)",
-                  security_label(p[1 + ssid_len + 1]), rssi) + 1;
+        security = p[1 + ssid_len + 1];
+        bar = signal_bar(rssi);
+        if (ssid_len == 0) {
+            mem_copy(out, "<hidden>", 8);
+            cells = 8;
+        } else {
+            cells = ssid_len;
+            if (cells > WIFISCAN_SSID_WIDTH)
+                cells = WIFISCAN_SSID_WIDTH;
+            mem_copy(out, p + 1, cells);
+        }
+        while (cells < WIFISCAN_SSID_WIDTH)
+            out[cells++] = ' ';
+        out += WIFISCAN_SSID_WIDTH;
+        *out++ = ' ';
+        mem_copy(out, security_label(security), WIFISCAN_SECURITY_WIDTH);
+        out += WIFISCAN_SECURITY_WIDTH;
+        *out++ = ' ';
+        mem_copy(out, bar, SIGNAL_BAR_LEVELS);
+        out += SIGNAL_BAR_LEVELS;
+        *out++ = 0;
         p += 1 + ssid_len + 2;
     }
     *out = 0;
