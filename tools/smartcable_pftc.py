@@ -42,6 +42,11 @@ IP_MODE_STATIC = 0x01
 SECURITY_OPEN = 0x00
 SECURITY_WPA2_PSK = 0x01
 SECURITY_WPA3_PSK = 0x02
+SECURITY_WPA_PSK = 0x05
+SECURITY_WPA2_WPA3_PSK = 0x06
+SECURITY_OWE = 0x07
+SECURITY_EAP = 0x08
+SECURITY_UNKNOWN = 0xFF
 
 MOCK_BUILD_ID = 0xFFFF0000
 MOCK_VERSION = (0, 0, 0)
@@ -169,22 +174,22 @@ mock_netif = NetifSlot(
     rssi=-45,
 )
 
-# Mock scan results for interface=0x00. Fixed/fake list, capped at 10
-# entries per the protocol - includes the currently-connected SSID plus
-# a few fabricated neighbors covering each security type and an
-# intentionally non-ASCII SSID to exercise the "raw bytes, no
-# filtering" rule.
+# Mock scan results for interface=0x00. The first six are from a real
+# 2.4 GHz ESP scan. The final four exercise display-only edge cases.
 mock_wifiscan_results = [
-    WifiScanResult(ssid=b"MockSSID", rssi=-45, security=SECURITY_WPA2_PSK),
-    WifiScanResult(ssid=b"OpenGuest", rssi=-60, security=SECURITY_OPEN),
-    WifiScanResult(ssid=b"Neighbour5G", rssi=-72, security=SECURITY_WPA3_PSK),
-    WifiScanResult(ssid="Caf\xe9WiFi".encode("latin-1"), rssi=-80, security=SECURITY_WPA2_PSK),
-    WifiScanResult(ssid=b"OfficeNet", rssi=-52, security=SECURITY_WPA2_PSK),
-    WifiScanResult(ssid=b"Workshop", rssi=-67, security=SECURITY_WPA2_PSK),
-    WifiScanResult(ssid=b"LegacyWEP", rssi=-84, security=SECURITY_WPA2_PSK),
-    WifiScanResult(ssid=b"Guest-2G", rssi=-75, security=SECURITY_OPEN),
-    WifiScanResult(ssid=b"IoT-Devices", rssi=-70, security=SECURITY_WPA2_PSK),
-    WifiScanResult(ssid=b"FarAwayAP", rssi=-91, security=SECURITY_WPA3_PSK),
+    WifiScanResult(ssid="Rebels🍻".encode("utf-8"), rssi=-33,
+                   security=SECURITY_WPA2_WPA3_PSK),
+    WifiScanResult(ssid=b"www.petrkr.net", rssi=-53,
+                   security=SECURITY_WPA2_WPA3_PSK),
+    WifiScanResult(ssid=b"PastaLove", rssi=-71, security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"O2-Internet-661", rssi=-76,
+                   security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"cukrarna1", rssi=-76, security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"internet", rssi=-87, security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"", rssi=-40, security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"", rssi=-46, security=SECURITY_WPA2_PSK),
+    WifiScanResult(ssid=b"CorpNet", rssi=-60, security=SECURITY_EAP),
+    WifiScanResult(ssid=b"FutureNet", rssi=-82, security=SECURITY_UNKNOWN),
 ]
 
 
