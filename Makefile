@@ -9,7 +9,7 @@ POFO_LIB_SRC := src/pofo/tinylib.c src/pofo/pofo_box.c src/pofo/pofo_dialog.c sr
 # start.c must stay first: it is the .COM entry point (see the file).
 PFTC_SRC := src/pftc/start.c src/pftc/pftc.c
 PFTC_SUPPORT_SRC := $(POFO_LIB_SRC) src/pofo/smartcable.c src/pftc/pftc_proto.c src/pftc/gui_core.c src/pftc/valid.c src/pftc/gui.c src/pftc/gui_iface.c src/pftc/gui_ip.c
-PFTC_HEADERS := src/pofo/pofo.h src/pofo/tinylib.h src/pofo/smartcable.h src/pftc/pftc_proto.h src/pftc/gui_core.h src/pftc/gui.h src/pftc/valid.h src/pftc/gui_shared.h
+PFTC_HEADERS := src/pofo/pofo.h src/pofo/tinylib.h src/pofo/smartcable.h src/pftc/pftc_proto.h src/pftc/gui_core.h src/pftc/gui.h src/pftc/valid.h src/pftc/gui_shared.h src/pftc/version.h src/pftc/build_id.h
 PFTC_BIN := $(BUILD_DIR)/PFTC.COM
 
 NASM ?= nasm
