@@ -28,13 +28,13 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Package for release
-        run: zip "PFTD-${{ github.event.workflow_run.head_branch }}.zip" PFTD.COM
+        run: zip "${{ github.event.workflow_run.head_branch }}.zip" PFTD.COM
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.event.workflow_run.head_branch }}" \
-            "PFTD-${{ github.event.workflow_run.head_branch }}.zip" \
+            "${{ github.event.workflow_run.head_branch }}.zip" \
             --title "${{ github.event.workflow_run.head_branch }}" \
             --generate-notes
